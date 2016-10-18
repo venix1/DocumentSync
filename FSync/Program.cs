@@ -16,27 +16,40 @@ namespace FSync
 {
 	class UnifiedFile
 	{
-		public List<UnifiedFile> Children { get; set;}
+		[Flags]
+		private enum State
+		{
+			Synchronized = 0,
+			Dity = -1,
+
+			RemoteRename = 1,
+			RemoteUpdate = 1 << 1,
+			RemoteDelete = 1 << 2,
+
+			LocalRename  = 1 << 3,
+			LocalUpdate  = 1 << 4,
+			LocalDelete  = 1 << 5,
+
+			Remote = RemoteRename | RemoteUpdate | RemoteDelete,
+			Local = LocalRename | LocalUpdate | LocalDelete,
+			SwitchMask = Remote | Local,
+		}
+		State Status;
 		public string Path { get; set;}
+
 		public Google.Apis.Drive.v3.Data.File File { get; set; }
+
 		public FileSystemInfo FileSystemInfo { get; set;}
 		public FileInfo FileInfo { get { return FileSystemInfo as FileInfo; } set { FileSystemInfo = value; } }
 		public DirectoryInfo DirectoryInfo { get { return FileSystemInfo as DirectoryInfo ; } set { FileSystemInfo = value; } }
-		public bool Complete { get; set; }
 
 		public UnifiedFile(Google.Apis.Drive.v3.Data.File file, FileSystemInfo fileSystemInfo)
 		{
-			Children = new List<UnifiedFile>();
-			Complete = false;
-				
 			File = file;
 			FileSystemInfo = fileSystemInfo;
 		}
 
-		public void Dirty()
-		{
-			Complete = false;
-		}
+		public bool Synchronized { get { return Status == State.Synchronized; } set { Status = State.Synchronized; } }
 
 		public string FileInfoMd5Checksum
 		{
@@ -58,10 +71,9 @@ namespace FSync
 		{
 			get
 			{
-				if (Complete || File.Md5Checksum == FileInfoMd5Checksum)
-					return File.Md5Checksum;
-				else
-					throw new Exception("Checksum mismatch");
+				if (!Synchronized)
+					throw new Exception("Checksum mismatch.  Requires Synchronization.");
+				return File.Md5Checksum;
 			}
 		}
 	}
@@ -86,7 +98,7 @@ namespace FSync
 			DriveService = driveService;
 			Root = new UnifiedFile(file, path);
 			Root.Path = "/";
-			Root.Complete = true;
+			Root.Synchronized = true;
 			AddFile(Root);
 
 			// Change Tracking
@@ -289,7 +301,7 @@ namespace FSync
 
 		public void SyncFile(UnifiedFile file)
 		{
-			if (file.Complete)
+			if (file.Synchronized)
 				return;
 			
 			string fname = Root.DirectoryInfo.FullName + file.Path;
@@ -350,7 +362,7 @@ namespace FSync
 					if (file.FileInfo.LastWriteTime != file.File.ModifiedTime.GetValueOrDefault(file.FileInfo.LastAccessTime))
 						file.FileInfo.LastWriteTime = file.File.ModifiedTime.GetValueOrDefault(file.FileInfo.LastAccessTime);
 					*/
-					file.Complete = true;
+					file.Synchronized = true;
 				}
 			}
 			else if (file.File != null)
@@ -368,7 +380,7 @@ namespace FSync
 					output.Close();
 					file.FileInfo = new FileInfo(fname);
 				}
-				file.Complete = true;
+				file.Synchronized = true;
 				Console.WriteLine(file.FileInfo);
 			}
 			else
@@ -397,7 +409,7 @@ namespace FSync
 					input.Close();
 				}
 				file.File = gfile;
-				file.Complete = true;
+				file.Synchronized = true;
 			}
 		}
 
@@ -528,7 +540,7 @@ namespace FSync
 			foreach (var path in queue)
 			{
 				var unifiedFile = PathMap[path];
-				unifiedFile.Dirty();
+				// unifiedFile.Dirty();
 				SyncFile(unifiedFile);
 			}
 		}
