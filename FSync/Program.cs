@@ -82,49 +82,75 @@ namespace FSync
 			Local = LocalRename | LocalUpdate | LocalDelete | LocalCreate,
 			SwitchMask = Remote | Local,
 		}
-		State mStatus;
+		State mStatus = State.Synchronized;
 		public State Status { get; }
 		public string Path { get; set; }
 
 		public Google.Apis.Drive.v3.Data.File File { get; set; }
 		public FileSystemInode Inode { get; set; }
 
-		public UnifiedFile(params object[] args)
+		public UnifiedFile(Google.Apis.Drive.v3.Data.File file, FileSystemInfo fileSystemInfo)
 		{
-			if (args.Length > 2)
-				throw new ArgumentException("Too many arugments passed.");
+			File = file;
+			Inode = new FileSystemInode(fileSystemInfo);
+			CalculateStatus();
+		}
 
-			Google.Apis.Drive.v3.Data.File file = null;
-			FileSystemInode fileSystemInode = null;
+		public UnifiedFile(Google.Apis.Drive.v3.Data.File file, FileSystemInode inode)
+		{
+			File = file;
+			Inode = inode;
+			CalculateStatus();
+		}
 
-			foreach (var arg in args)
+		// Compare File and Inode to generate state
+		public void CalculateStatus()
+		{
+			if (File == null)
 			{
-				if (arg is Google.Apis.Drive.v3.Data.File)
-				{ }
-				else if (arg is FileSystemInfo)
+				mStatus = State.LocalCreate;
+			}
+			else if (Inode == null)
+			{
+				mStatus = State.RemoteCreate;
+			}
+			else
+			{
+				if (File.Md5Checksum != Inode.Md5Checksum)
 				{
-					if (fileSystemInode != null)
-						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
-					fileSystemInode = new FileSystemInode((FileSystemInfo)arg);
+					mStatus = State.Conflict;
 				}
-				else if (arg is FileSystemInode)
-				{
-					if (fileSystemInode != null)
-						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
-					fileSystemInode = (FileSystemInode) arg;
-				}
-				else
-				{
-					throw new ArgumentException("Argument must be Google.Apis.Drive.v3.Data.Files, FileSystemInfo, or FileSystemInode");
-				}
+				else { Debug.Assert(false, "Shouldn't happen"); }
 			}
 		}
+
+		public bool IsLocalUpdate
+		{
+			get
+			{
+				return (mStatus  & State.Local) > 0;
+			}
+		}
+
+		public bool IsRemoteUpdate
+		{
+			get
+			{
+				return (mStatus & State.Remote) > 0;
+			}
+		}
+
 
 		public bool HasConflict
 		{
 			get
 			{
 				return mStatus.HasFlag(State.Conflict);
+			}
+
+			set
+			{
+				mStatus |= State.Conflict;
 			}
 		}
 		public bool Synchronized { get { return mStatus == State.Synchronized; } set { mStatus = State.Synchronized; } }
@@ -133,7 +159,7 @@ namespace FSync
 		{
 			throw new NotImplementedException();
 		}
-		public void Modify(FileSystemInfo file)
+		public void Modify(FileSystemInode file)
 		{
 			throw new NotImplementedException();
 		}
@@ -205,9 +231,9 @@ namespace FSync
 			IdMap = new Dictionary<string, string>();
 
 			DriveService = driveService;
-			Root = new UnifiedFile(file, path);
+			Root = new UnifiedFile(file, new FileSystemInode(path));
 			Root.Path = "/";
-			Root.Synchronized = true;
+			SynchronizeFile(Root);
 			AddFile(Root);
 
 			// Change Tracking
@@ -215,6 +241,8 @@ namespace FSync
 			Console.WriteLine("Start token: " + response.StartPageTokenValue);
 			savedStartPageToken = response.StartPageTokenValue;
 		}
+
+
 
 		public Google.Apis.Drive.v3.Data.File GetDriveFileInfo(string id)
 		{
@@ -256,30 +284,66 @@ namespace FSync
 			return path;
 		}
 
-		/*
-		public UnifiedFile GetUnifiedFile(Google.Apis.Drive.v3.Data.File file)
+		public UnifiedFile GetUnifiedFile(params object[] args)
 		{
-			string path = GetDrivePath(file);
-			UnifiedFile unifiedFile = GetFileByPath(path);
+			if (args.Length > 2)
+				throw new ArgumentException("Too many arugments passed.");
 
-			if (unifiedFile != null)
+			Google.Apis.Drive.v3.Data.File file = null;
+			FileSystemInode fileSystemInode = null;
+
+			foreach (var arg in args)
 			{
-				if (unifiedFile.File == null)
-					unifiedFile.File = file;
-				return unifiedFile;
+				if (arg is Google.Apis.Drive.v3.Data.File)
+				{
+					if (file != null)
+						throw new ArgumentException("Only one Drive File may be passed.");
+					file = (Google.Apis.Drive.v3.Data.File)arg;
+				}
+				else if (arg is FileSystemInfo)
+				{
+					if (fileSystemInode != null)
+						throw new ArgumentException("Multiple FileSystemInfo or FileSystemInode objects passed.");
+					fileSystemInode = new FileSystemInode((FileSystemInfo)arg);
+				}
+				else if (arg is FileSystemInode)
+				{
+					if (fileSystemInode != null)
+						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
+					fileSystemInode = (FileSystemInode)arg;
+				}
+				else
+				{
+					throw new ArgumentException("Argument must be Google.Apis.Drive.v3.Data.Files, FileSystemInfo, or FileSystemInode");
+				}
 			}
 
-			unifiedFile = new UnifiedFile(file, null);
-			unifiedFile.Path = path;
+			string path = "";
+			if (file != null)
+			{
+				path = GetDrivePath(file);
+			}
+			else if (fileSystemInode != null)
+			{
+				path = BuildRelativePath(fileSystemInode.FullName);
+			}
 
-			if (System.IO.Directory.Exists(unifiedFile.Path))
-				unifiedFile.FileSystemInfo = new System.IO.DirectoryInfo(unifiedFile.Path);
-			else if (System.IO.File.Exists(unifiedFile.Path))
-				unifiedFile.FileSystemInfo = new System.IO.FileInfo(unifiedFile.Path);
+			UnifiedFile unifiedFile;
+
+			// TODO: This should be a query function.
+			PathMap.TryGetValue(path, out unifiedFile);
+
+			if (unifiedFile == null)
+			{
+				unifiedFile = new UnifiedFile(file, fileSystemInode);
+				unifiedFile.Path = path;
+			}
+
+			unifiedFile.Modify(unifiedFile.File);
+			unifiedFile.Modify(unifiedFile.Inode);
 
 			return unifiedFile;
 		}
-		*/
 
 		public string BuildRelativePath(string path)
 		{
@@ -409,6 +473,42 @@ namespace FSync
 			}
 		}
 
+		void SynchronizeFile(UnifiedFile file)
+		{
+			if (file.Synchronized)
+				return;
+
+			string fname = Root.Inode.FullName + file.Path;
+
+			// Try to determine approriate flags.
+			if (file.IsRemoteUpdate && file.IsLocalUpdate)
+			{
+				if (file.File.Md5Checksum != file.Inode.Md5Checksum)
+				{
+					file.HasConflict = true;
+				}
+			}
+
+			if (file.HasConflict)
+			{
+				
+				/*
+var conflictStr = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now).ToUniversalTime().ToString("o");
+var conflict = new Google.Apis.Drive.v3.Data.File();
+trash.Name = file.File.Name + conflict;
+DriveService.Files.Update(trash, file.File.Id).Execute();
+*/
+
+				throw new NotImplementedException();
+			}
+
+			if ((file.Status & (file.Status - 1)) != 0)
+				throw new Exception("Multiple Flags set");
+			switch (file.Status & UnifiedFile.State.Synchronized)
+			{
+			}
+		}
+
 		public void SyncFile(UnifiedFile file)
 		{
 			if (file.Synchronized)
@@ -419,12 +519,6 @@ namespace FSync
 			if (file.HasConflict)
 			{
 				Debug.Assert(false, "Not implemented");
-				/*
-				var conflictStr = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now).ToUniversalTime().ToString("o");
-				var conflict = new Google.Apis.Drive.v3.Data.File();
-				trash.Name = file.File.Name + conflict;
-				DriveService.Files.Update(trash, file.File.Id).Execute();
-				*/
 			}
 
 			switch (file.Status & UnifiedFile.State.Synchronized)
