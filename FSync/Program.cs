@@ -23,11 +23,12 @@ namespace FSync
 
 		void CalculateMd5Checksum()
 		{
-			Console.WriteLine(FileInfo);
+			if (FileInfo == null)
+				return;
+
 			Debug.Assert(FileInfo == null, "Null FileInfo");
 			using (var md5 = MD5.Create())
 			{
-				Console.WriteLine(FileInfo.FullName);
 				using (var stream = FileInfo.OpenRead())
 				{
 					mMd5Checksum = BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", string.Empty).ToLower();
@@ -39,11 +40,30 @@ namespace FSync
 			FileSystemInfo = fileSystemInfo;
 		}
 
+		public bool IsDirectory
+		{
+			get { return DirectoryInfo != null; }
+		}
+
+		public bool IsFile
+		{
+			get { return FileInfo != null; }
+		}
+		public void MoveTo(string path)
+		{
+			if (IsFile)
+				FileInfo.MoveTo(path);
+			else if (IsDirectory)
+				DirectoryInfo.MoveTo(path);
+			else
+				throw new ApplicationException("Shouldn't happen");
+		}
+
 		public string Md5Checksum
 		{
 			get
 			{
-				if (mMd5Checksum.Length == 0)
+				if (mMd5Checksum == null && DirectoryInfo == null)
 					CalculateMd5Checksum();
 				return mMd5Checksum;
 			}
@@ -83,7 +103,7 @@ namespace FSync
 			SwitchMask = Remote | Local,
 		}
 		State mStatus = State.Synchronized;
-		public State Status { get; }
+		public State Status { get { return mStatus; } }
 		public string Path { get; set; }
 
 		public Google.Apis.Drive.v3.Data.File File { get; set; }
@@ -93,14 +113,12 @@ namespace FSync
 		{
 			File = file;
 			Inode = new FileSystemInode(fileSystemInfo);
-			CalculateStatus();
 		}
 
 		public UnifiedFile(Google.Apis.Drive.v3.Data.File file, FileSystemInode inode)
 		{
 			File = file;
 			Inode = inode;
-			CalculateStatus();
 		}
 
 		// Compare File and Inode to generate state
@@ -108,19 +126,26 @@ namespace FSync
 		{
 			if (File == null)
 			{
+				Console.WriteLine("CalculateStatus: LocalCreate");
 				mStatus = State.LocalCreate;
 			}
 			else if (Inode == null)
 			{
+				Console.WriteLine("CalculateStatus: RemoteCreate");
 				mStatus = State.RemoteCreate;
 			}
 			else
 			{
 				if (File.Md5Checksum != Inode.Md5Checksum)
 				{
+					Console.WriteLine("CalculateStatus: Conflict");
 					mStatus = State.Conflict;
 				}
-				else { Debug.Assert(false, "Shouldn't happen"); }
+				else
+				{
+					Console.WriteLine("CalculateStatus: Synchronized");
+					mStatus = State.Synchronized;
+				}
 			}
 		}
 
@@ -157,6 +182,8 @@ namespace FSync
 
 		public void Modify(Google.Apis.Drive.v3.Data.File file)
 		{
+			if (file.Version == File.Version)
+				return;
 			throw new NotImplementedException();
 		}
 		public void Modify(FileSystemInode file)
@@ -231,7 +258,7 @@ namespace FSync
 			IdMap = new Dictionary<string, string>();
 
 			DriveService = driveService;
-			Root = new UnifiedFile(file, new FileSystemInode(path));
+			Root = new UnifiedFile(file, path);
 			Root.Path = "/";
 			SynchronizeFile(Root);
 			AddFile(Root);
@@ -332,6 +359,7 @@ namespace FSync
 
 			// TODO: This should be a query function.
 			PathMap.TryGetValue(path, out unifiedFile);
+			Console.WriteLine("GetUnifiedFile: {0} {1} {2} {3}", path,unifiedFile, file, fileSystemInode);
 
 			if (unifiedFile == null)
 			{
@@ -339,8 +367,13 @@ namespace FSync
 				unifiedFile.Path = path;
 			}
 
-			unifiedFile.Modify(unifiedFile.File);
-			unifiedFile.Modify(unifiedFile.Inode);
+			// TODO: Check if present and call Modify instead.
+			if (file != null)
+				unifiedFile.File = file;
+			else if (fileSystemInode != null)
+				unifiedFile.Inode = fileSystemInode;
+
+			unifiedFile.CalculateStatus();
 
 			return unifiedFile;
 		}
@@ -350,30 +383,9 @@ namespace FSync
 			return path.Substring(Root.Inode.FullName.Length);
 		}
 
-		public UnifiedFile GetUnifiedFile(FileSystemInfo fileSystemInfo)
-		{
-			UnifiedFile unifiedFile;
-			string path = BuildRelativePath(fileSystemInfo.FullName);
-
-			PathMap.TryGetValue(path, out unifiedFile);
-
-			if (unifiedFile != null)
-			{
-				if (unifiedFile.Inode == null)
-					unifiedFile.Inode = new FileSystemInode(fileSystemInfo);
-				return unifiedFile;
-			}
-
-			unifiedFile = new UnifiedFile(null, fileSystemInfo);
-			unifiedFile.Path = path;
-
-			return unifiedFile;
-		}
-
 		public UnifiedFile AddFile(Google.Apis.Drive.v3.Data.File file)
 		{
-			throw new NotImplementedException();
-			//return AddFile(GetUnifiedFile(file));
+			return AddFile(GetUnifiedFile(file));
 		}
 		public UnifiedFile AddFile(FileSystemInfo fileSystemInfo)
 		{
@@ -408,6 +420,7 @@ namespace FSync
 
 			foreach (var fi in path.EnumerateFiles())
 			{
+				Console.WriteLine("{0}", fi.FullName);
 				AddFile(fi);
 			}
 
@@ -446,7 +459,7 @@ namespace FSync
 						Console.Write(" {0}", parent);
 					Console.WriteLine();
 					*/
-					// Console.WriteLine(" {2} {3} {4}", file.Name, file.Id, file.Size, file.ModifiedTime, file.Md5Checksum);
+					// Console.WriteLine(" {2} {3} {4}", file.Name, file.Id, file.Size, file.ModifiedTime, file.Md5Checksum)
 					if (file.MimeType == "application/vnd.google-apps.folder")
 					{
 						folders.Add(AddFile(file));
@@ -469,7 +482,7 @@ namespace FSync
 		{
 			foreach (var item in PathMap)
 			{
-				SyncFile(item.Value);
+				SynchronizeFile(item.Value);
 			}
 		}
 
@@ -477,6 +490,8 @@ namespace FSync
 		{
 			if (file.Synchronized)
 				return;
+
+			Console.WriteLine("SynchronizeFile: {0}", file.Path);
 
 			string fname = Root.Inode.FullName + file.Path;
 
@@ -491,126 +506,106 @@ namespace FSync
 
 			if (file.HasConflict)
 			{
-				
-				/*
-var conflictStr = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now).ToUniversalTime().ToString("o");
-var conflict = new Google.Apis.Drive.v3.Data.File();
-trash.Name = file.File.Name + conflict;
-DriveService.Files.Update(trash, file.File.Id).Execute();
-*/
+				var conflictExt = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now)
+				                                     .ToUniversalTime().ToString("o");
 
-				throw new NotImplementedException();
+				if (file.File.ModifiedTime > file.Inode.ModifiedTime)
+				{
+					file.Inode.MoveTo(file.Inode.FullName + conflictExt);
+					file.Inode = null;
+				}
+				else
+				{
+					var conflict = new Google.Apis.Drive.v3.Data.File();
+					conflict.Name = file.File.Name + conflictExt;
+					DriveService.Files.Update(conflict, file.File.Id).Execute();
+					file.File = null;
+				}
+				file.CalculateStatus();
 			}
 
 			if ((file.Status & (file.Status - 1)) != 0)
 				throw new Exception("Multiple Flags set");
-			switch (file.Status & UnifiedFile.State.Synchronized)
+			Console.WriteLine(file.Status);
+
+			Google.Apis.Drive.v3.Data.File gfile;
+			UnifiedFile parent;
+
+			switch (file.Status & UnifiedFile.State.SwitchMask)
 			{
-			}
-		}
-
-		public void SyncFile(UnifiedFile file)
-		{
-			if (file.Synchronized)
-				return;
-			
-			string fname = Root.Inode.FullName + file.Path;
-
-			if (file.HasConflict)
-			{
-				Debug.Assert(false, "Not implemented");
-			}
-
-			switch (file.Status & UnifiedFile.State.Synchronized)
-			{
-				case UnifiedFile.State.RemoteCreate:
-					break;
-				case UnifiedFile.State.RemoteRename:
-					break;
-				case UnifiedFile.State.RemoteUpdate:
-					/*
-					if (file.File.MimeType == "application/vnd.google-apps.folder")
-					{
-						System.IO.Directory.CreateDirectory(fname);
-						file.DirectoryInfo = new DirectoryInfo(fname);
-					}
-					else
-					{
-						var output = new System.IO.StreamWriter(fname);
-						var download = DriveService.Files.Get(file.File.Id);
-						download.Download(output.BaseStream);
-						output.Close();
-						file.FileInfo = new FileInfo(fname);
-					}
-					file.Synchronized = true;
-					Console.WriteLine(file.FileInfo);
-					*/
-					break;
-				case UnifiedFile.State.RemoteDelete:
-					break;
-
-				case UnifiedFile.State.LocalCreate:
+				case UnifiedFile.State.Synchronized:
+					// Nothing to do here folks
 					break;
 				case UnifiedFile.State.LocalRename:
+					Console.WriteLine("Local rename");
 					break;
-				case UnifiedFile.State.LocalUpdate:
-					Console.WriteLine("{0} {1} Sync - Update Drive", file.File.Id, file.Inode.FullName);
+				case UnifiedFile.State.LocalCreate:
+					gfile = new Google.Apis.Drive.v3.Data.File();
+					parent = PathMap[System.IO.Path.GetDirectoryName(file.Path)];
 
-					/*
-					var gfile = new Google.Apis.Drive.v3.Data.File();
-					var parent = PathMap[System.IO.Path.GetDirectoryName(file.Path)];
 					gfile.Name = System.IO.Path.GetFileName(file.Path);
-					gfile.ModifiedTime = file.FileSystemInfo.LastWriteTime;
+					gfile.ModifiedTime = file.Inode.ModifiedTime;
 					gfile.Parents = new string[] { parent.File.Id };
-					if (file.DirectoryInfo != null)
+					if (file.Inode.IsDirectory)
 						gfile.MimeType = "application/vnd.google-apps.folder";
 
-					if (true)
-					{
-						var request = DriveService.Files.Create(gfile);
-						request.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size";
-						gfile = request.Execute();
-						Console.WriteLine("{0} {1}", gfile.Id, gfile.Name);
-					}
-					if (file.FileInfo != null)
+					var createRequest = DriveService.Files.Create(gfile);
+					createRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+					gfile = createRequest.Execute();
+					file.File = gfile;
+					goto case UnifiedFile.State.LocalUpdate;
+
+				case UnifiedFile.State.LocalUpdate:
+					Console.WriteLine("Local Update");
+
+					gfile = new Google.Apis.Drive.v3.Data.File();
+					gfile.ModifiedTime = file.Inode.ModifiedTime;
+
+					if (file.Inode.IsFile)
 					{
 						Console.WriteLine("Uploading");
 						var input = new System.IO.StreamReader(fname);
-						var request = DriveService.Files.Update(null, gfile.Id, input.BaseStream, "");
-						request.Upload();
+						var updateRequest = DriveService.Files.Update(null, file.File.Id, input.BaseStream, "");
+						updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+						updateRequest.Upload();
+						if (updateRequest.GetProgress().Status != Google.Apis.Upload.UploadStatus.Completed)
+							throw new ApplicationException("Upload failed");
+						file.File = updateRequest.ResponseBody;
 						input.Close();
 					}
-					file.File = gfile;
 					file.Synchronized = true;
-			}
-			*/
-
-			/*
--                    */
-			file.File = null;
 					break;
 				case UnifiedFile.State.LocalDelete:
+					Console.WriteLine("Local Delete");
+					/*
 					Console.WriteLine("{0} {1} Sync - Remove", file.File.Id, file.Inode.FullName);
 					//file.Deleted = true;
 					PathMap.Remove(file.Path);
 					var trash = new Google.Apis.Drive.v3.Data.File();
 					Console.WriteLine(file.File.IsAppAuthorized);
 					//if (Config.Trash)
-						//DriveService.Files.Update(trash, file.File.Id).Execute();
+					//DriveService.Files.Update(trash, file.File.Id).Execute();
 					DriveService.Files.Delete(file.File.Id).Execute();
 					// var request = DriveService.Files.Delete(file.File.Id);
 					// request.Execute();
-
+					*/
 					break;
+				default:
+					Console.WriteLine("WTF BBQ!?");
+					throw new ApplicationException("Unhandled Synchronization");
 			}
-
 		}
 
 		public void DoSync()
 		{
 			FindFiles(Root);
 			ScanDisk(Root);
+			Watch();
 			Converge();
+			Console.WriteLine("Press 'q' to quit the sample.");
+			while (Console.Read() != 'q') { };
+
+
 			/*
 			var file = PathMap["/badda"];
 			Console.WriteLine("{0} {1}", Root.File.Id, Root.File.Name);
@@ -629,32 +624,26 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 				request.IncludeRemoved = true;
 				request.Fields = "changes(file(id,md5Checksum,mimeType,modifiedTime,name,parents,size,trashed,version),fileId,removed,time),newStartPageToken,nextPageToken";
 				request.Spaces = "drive";
+
 				var changes = request.Execute();
 				foreach (var change in changes.Changes)
 				{
-					Console.WriteLine("{0} {1} {2}", change.File.Name, change.File.Version, change.TimeRaw);
+					Console.WriteLine("{0} {1} {2} {3}", change.File.Id, change.File.Name, change.File.Version, change.TimeRaw);
 					// TODO: Handle folders
 					if (change.File.MimeType == "application/vnd.google-apps.folder")
 						continue;
 					
 					var path = GetDrivePath(change.File);
-					// Console.WriteLine("{0} {1}", change.FileId, path);
+
 					UnifiedFile unifiedFile = null;
 					foreach (var file in PathMap.Values)
 					{
-						/*
-						Console.WriteLine(file.File.Id);
-						Console.WriteLine(change.FileId);
-						Console.WriteLine("---");
-						*/
 						if (file.File.Id == change.FileId)
 						{
 							unifiedFile = file;
 							break;
 						}
 					}
-
-					unifiedFile.Modify(change.File);
 
 					// New: fileId !in IdMap and DrivePath in Root.
 					if (unifiedFile == null)
@@ -665,6 +654,8 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 					// Existing: fileId in IdMap.
 					else
 					{
+						unifiedFile.Modify(change.File);
+
 						// Delete: remove or trash set.
 						if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false))
 						{
@@ -726,17 +717,24 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
 		{
-			GetDriveChanges();
-
-			var queue = PendingSync;
-			PendingSync = new HashSet<string>();
-
-			Console.WriteLine("Executing sync queue. {0}", queue.Count);
-			foreach (var path in queue)
+			try
 			{
-				var unifiedFile = PathMap[path];
-				// unifiedFile.Dirty();
-				SyncFile(unifiedFile);
+				GetDriveChanges();
+
+				var queue = PendingSync;
+				PendingSync = new HashSet<string>();
+
+				Console.WriteLine("Executing sync queue. {0}", queue.Count);
+				foreach (var path in queue)
+				{
+					var unifiedFile = PathMap[path];
+					// unifiedFile.Dirty();
+					SynchronizeFile(unifiedFile);
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine(ex);
 			}
 		}
 
@@ -758,8 +756,6 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 			watcher.Renamed += new RenamedEventHandler(OnRenamed);
 
 			watcher.EnableRaisingEvents = true;
-			Console.WriteLine("Press 'q' to quit the sample.");
-			while (Console.Read() != 'q') { };
 		}
 
 
@@ -767,10 +763,13 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 		private void OnChanged(object source, FileSystemEventArgs e)
 		{
 			Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
+			var inode = new FileSystemInode(e.FullPath);
+
 			if (e.ChangeType == WatcherChangeTypes.Created)
 				AddFile(new FileInfo(e.FullPath));
 
 			var unifiedFile = PathMap[BuildRelativePath(e.FullPath)];
+			unifiedFile.Modify(inode);
 			PendingSync.Add(unifiedFile.Path);
 			// unifiedFile.Dirty();
 			// SyncFile(unifiedFile);
@@ -867,7 +866,6 @@ DriveService.Files.Update(trash, file.File.Id).Execute();
 			{
 				System.IO.Directory.CreateDirectory(args[1]);
 				root.DoSync();
-				root.Watch();
 			}
 			else
 			{
