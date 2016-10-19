@@ -9,64 +9,173 @@ using System.Security.Cryptography;
 using System.IO;
 using System.Threading;
 
-
-
-
 namespace FSync
 {
-	class UnifiedFile
+	class FileSystemInode
 	{
-		[Flags]
-		private enum State
-		{
-			Synchronized = 0,
-			Dity = -1,
-
-			RemoteRename = 1,
-			RemoteUpdate = 1 << 1,
-			RemoteDelete = 1 << 2,
-
-			LocalRename  = 1 << 3,
-			LocalUpdate  = 1 << 4,
-			LocalDelete  = 1 << 5,
-
-			Remote = RemoteRename | RemoteUpdate | RemoteDelete,
-			Local = LocalRename | LocalUpdate | LocalDelete,
-			SwitchMask = Remote | Local,
-		}
-		State Status;
-		public string Path { get; set;}
-
-		public Google.Apis.Drive.v3.Data.File File { get; set; }
-
-		public FileSystemInfo FileSystemInfo { get; set;}
+		public FileSystemInfo FileSystemInfo { get; set; }
 		public FileInfo FileInfo { get { return FileSystemInfo as FileInfo; } set { FileSystemInfo = value; } }
-		public DirectoryInfo DirectoryInfo { get { return FileSystemInfo as DirectoryInfo ; } set { FileSystemInfo = value; } }
+		public DirectoryInfo DirectoryInfo { get { return FileSystemInfo as DirectoryInfo; } set { FileSystemInfo = value; } }
 
-		public UnifiedFile(Google.Apis.Drive.v3.Data.File file, FileSystemInfo fileSystemInfo)
+		public DateTime ModifiedTime { get { return FileSystemInfo.LastWriteTime; } }
+
+		string mMd5Checksum;
+
+		void CalculateMd5Checksum()
 		{
-			File = file;
-			FileSystemInfo = fileSystemInfo;
-		}
-
-		public bool Synchronized { get { return Status == State.Synchronized; } set { Status = State.Synchronized; } }
-
-		public string FileInfoMd5Checksum
-		{
-			get
+			Console.WriteLine(FileInfo);
+			Debug.Assert(FileInfo == null, "Null FileInfo");
+			using (var md5 = MD5.Create())
 			{
-				Console.WriteLine(FileInfo);
-				Debug.Assert(FileInfo == null, "Null FileInfo");
-				using (var md5 = MD5.Create())
+				Console.WriteLine(FileInfo.FullName);
+				using (var stream = FileInfo.OpenRead())
 				{
-					Console.WriteLine(FileInfo.FullName);
-					using (var stream = FileInfo.OpenRead())
-					{
-						return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", string.Empty).ToLower();
-					}
+					mMd5Checksum = BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", string.Empty).ToLower();
 				}
 			}
 		}
+		public FileSystemInode(FileSystemInfo fileSystemInfo)
+		{
+			FileSystemInfo = fileSystemInfo;
+		}
+
+		public string Md5Checksum
+		{
+			get
+			{
+				if (mMd5Checksum.Length == 0)
+					CalculateMd5Checksum();
+				return mMd5Checksum;
+			}
+		}
+
+		public string FullName
+		{
+			get
+			{
+				return FileSystemInfo.FullName;
+			}
+		}
+
+	}
+
+	class UnifiedFile
+	{
+		[Flags]
+		public enum State
+		{
+			Dirty = -1,
+			Synchronized = 0,
+			Conflict = 1,
+
+			RemoteRename = 1 << 1,
+			RemoteUpdate = 1 << 2,
+			RemoteDelete = 1 << 3,
+			RemoteCreate = 1 << 4,
+
+			LocalRename = 1 << 5,
+			LocalUpdate = 1 << 6,
+			LocalDelete = 1 << 7,
+			LocalCreate = 1 << 8,
+
+			Remote = RemoteRename | RemoteUpdate | RemoteDelete | RemoteCreate,
+			Local = LocalRename | LocalUpdate | LocalDelete | LocalCreate,
+			SwitchMask = Remote | Local,
+		}
+		State mStatus;
+		public State Status { get; }
+		public string Path { get; set; }
+
+		public Google.Apis.Drive.v3.Data.File File { get; set; }
+		public FileSystemInode Inode { get; set; }
+
+		public UnifiedFile(params object[] args)
+		{
+			if (args.Length > 2)
+				throw new ArgumentException("Too many arugments passed.");
+
+			Google.Apis.Drive.v3.Data.File file = null;
+			FileSystemInode fileSystemInode = null;
+
+			foreach (var arg in args)
+			{
+				if (arg is Google.Apis.Drive.v3.Data.File)
+				{ }
+				else if (arg is FileSystemInfo)
+				{
+					if (fileSystemInode != null)
+						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
+					fileSystemInode = new FileSystemInode((FileSystemInfo)arg);
+				}
+				else if (arg is FileSystemInode)
+				{
+					if (fileSystemInode != null)
+						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
+					fileSystemInode = (FileSystemInode) arg;
+				}
+				else
+				{
+					throw new ArgumentException("Argument must be Google.Apis.Drive.v3.Data.Files, FileSystemInfo, or FileSystemInode");
+				}
+			}
+		}
+
+		public bool HasConflict
+		{
+			get
+			{
+				return mStatus.HasFlag(State.Conflict);
+			}
+		}
+		public bool Synchronized { get { return mStatus == State.Synchronized; } set { mStatus = State.Synchronized; } }
+
+		public void Modify(Google.Apis.Drive.v3.Data.File file)
+		{
+			throw new NotImplementedException();
+		}
+		public void Modify(FileSystemInfo file)
+		{
+			throw new NotImplementedException();
+		}
+		void Create(Google.Apis.Drive.v3.Data.File file)
+		{
+			mStatus = State.RemoteCreate;
+		}
+		void Rename(Google.Apis.Drive.v3.Data.File file)
+		{
+			mStatus = State.RemoteRename;
+		}
+		void Delete(Google.Apis.Drive.v3.Data.File file)
+		{
+			mStatus = State.RemoteDelete;
+		}
+		void Update(Google.Apis.Drive.v3.Data.File file)
+		{
+			Debug.Assert(mStatus == State.Synchronized, "mStatus not synchronized");
+			Debug.Assert(File.Md5Checksum == Inode.Md5Checksum);
+
+			if (File.ModifiedTime < Inode.ModifiedTime)
+				mStatus |= State.Conflict;
+			mStatus |= State.RemoteUpdate;
+		}
+
+		void Create(FileSystemInfo fileSystemInfo)
+		{
+			mStatus = State.LocalCreate;
+		}
+		void Rename(FileSystemInfo fileSystemInfo)
+		{
+			mStatus = State.LocalRename;
+		}
+		void Delete(FileSystemInfo fileSystemInfo)
+		{
+			mStatus = State.LocalDelete;
+		}
+		void Update(FileSystemInfo fileSystemInfo)
+		{
+			mStatus = State.LocalUpdate;
+		}
+
 		public string Md5Checksum
 		{
 			get
@@ -147,6 +256,7 @@ namespace FSync
 			return path;
 		}
 
+		/*
 		public UnifiedFile GetUnifiedFile(Google.Apis.Drive.v3.Data.File file)
 		{
 			string path = GetDrivePath(file);
@@ -169,10 +279,11 @@ namespace FSync
 
 			return unifiedFile;
 		}
+		*/
 
 		public string BuildRelativePath(string path)
 		{
-			return path.Substring(Root.FileSystemInfo.FullName.Length);
+			return path.Substring(Root.Inode.FullName.Length);
 		}
 
 		public UnifiedFile GetUnifiedFile(FileSystemInfo fileSystemInfo)
@@ -184,8 +295,8 @@ namespace FSync
 
 			if (unifiedFile != null)
 			{
-				if (unifiedFile.FileSystemInfo == null)
-					unifiedFile.FileSystemInfo = fileSystemInfo;
+				if (unifiedFile.Inode == null)
+					unifiedFile.Inode = new FileSystemInode(fileSystemInfo);
 				return unifiedFile;
 			}
 
@@ -197,7 +308,8 @@ namespace FSync
 
 		public UnifiedFile AddFile(Google.Apis.Drive.v3.Data.File file)
 		{
-			return AddFile(GetUnifiedFile(file));
+			throw new NotImplementedException();
+			//return AddFile(GetUnifiedFile(file));
 		}
 		public UnifiedFile AddFile(FileSystemInfo fileSystemInfo)
 		{
@@ -222,11 +334,9 @@ namespace FSync
 			return unifiedFile;
 		}
 
-
-
 		public void ScanDisk(UnifiedFile root)
 		{
-			DirectoryInfo path = root.DirectoryInfo;
+			DirectoryInfo path = root.Inode.DirectoryInfo;
 			var folders = new List<UnifiedFile>();
 
 			if (path.Attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -304,113 +414,102 @@ namespace FSync
 			if (file.Synchronized)
 				return;
 			
-			string fname = Root.DirectoryInfo.FullName + file.Path;
+			string fname = Root.Inode.FullName + file.Path;
 
-			if (file.File != null && file.FileInfo != null)
+			if (file.HasConflict)
 			{
-				if (!System.IO.File.Exists(file.FileInfo.FullName))
-				{
-					Console.WriteLine("{0} {1} Sync - Remove", file.File.Id, file.FileInfo.FullName);
+				Debug.Assert(false, "Not implemented");
+				/*
+				var conflictStr = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now).ToUniversalTime().ToString("o");
+				var conflict = new Google.Apis.Drive.v3.Data.File();
+				trash.Name = file.File.Name + conflict;
+				DriveService.Files.Update(trash, file.File.Id).Execute();
+				*/
+			}
+
+			switch (file.Status & UnifiedFile.State.Synchronized)
+			{
+				case UnifiedFile.State.RemoteCreate:
+					break;
+				case UnifiedFile.State.RemoteRename:
+					break;
+				case UnifiedFile.State.RemoteUpdate:
+					/*
+					if (file.File.MimeType == "application/vnd.google-apps.folder")
+					{
+						System.IO.Directory.CreateDirectory(fname);
+						file.DirectoryInfo = new DirectoryInfo(fname);
+					}
+					else
+					{
+						var output = new System.IO.StreamWriter(fname);
+						var download = DriveService.Files.Get(file.File.Id);
+						download.Download(output.BaseStream);
+						output.Close();
+						file.FileInfo = new FileInfo(fname);
+					}
+					file.Synchronized = true;
+					Console.WriteLine(file.FileInfo);
+					*/
+					break;
+				case UnifiedFile.State.RemoteDelete:
+					break;
+
+				case UnifiedFile.State.LocalCreate:
+					break;
+				case UnifiedFile.State.LocalRename:
+					break;
+				case UnifiedFile.State.LocalUpdate:
+					Console.WriteLine("{0} {1} Sync - Update Drive", file.File.Id, file.Inode.FullName);
+
+					/*
+					var gfile = new Google.Apis.Drive.v3.Data.File();
+					var parent = PathMap[System.IO.Path.GetDirectoryName(file.Path)];
+					gfile.Name = System.IO.Path.GetFileName(file.Path);
+					gfile.ModifiedTime = file.FileSystemInfo.LastWriteTime;
+					gfile.Parents = new string[] { parent.File.Id };
+					if (file.DirectoryInfo != null)
+						gfile.MimeType = "application/vnd.google-apps.folder";
+
+					if (true)
+					{
+						var request = DriveService.Files.Create(gfile);
+						request.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size";
+						gfile = request.Execute();
+						Console.WriteLine("{0} {1}", gfile.Id, gfile.Name);
+					}
+					if (file.FileInfo != null)
+					{
+						Console.WriteLine("Uploading");
+						var input = new System.IO.StreamReader(fname);
+						var request = DriveService.Files.Update(null, gfile.Id, input.BaseStream, "");
+						request.Upload();
+						input.Close();
+					}
+					file.File = gfile;
+					file.Synchronized = true;
+			}
+			*/
+
+			/*
+-                    */
+			file.File = null;
+					break;
+				case UnifiedFile.State.LocalDelete:
+					Console.WriteLine("{0} {1} Sync - Remove", file.File.Id, file.Inode.FullName);
 					//file.Deleted = true;
 					PathMap.Remove(file.Path);
 					var trash = new Google.Apis.Drive.v3.Data.File();
 					Console.WriteLine(file.File.IsAppAuthorized);
-					DriveService.Files.Update(trash, file.File.Id).Execute();
+					//if (Config.Trash)
+						//DriveService.Files.Update(trash, file.File.Id).Execute();
+					DriveService.Files.Delete(file.File.Id).Execute();
+					// var request = DriveService.Files.Delete(file.File.Id);
+					// request.Execute();
 
-					return;
-				}
-				if (file.File.Md5Checksum != file.FileInfoMd5Checksum)
-				{
-					// Save drive checksums, for conflicts.
-					// Console.WriteLine("{0} {1}", file.File.Md5Checksum, file.FileInfoMd5Checksum);
-					// Console.WriteLine("{0} {1}", file.File.ModifiedTime, file.FileInfo.LastWriteTime);
-					Debug.Assert(file.File.ModifiedTime.HasValue, "No modification time for Google Drive File");
-
-					if (file.File.ModifiedTime > file.FileInfo.LastWriteTime)
-					{
-						Console.WriteLine("{0} {1} Sync - Update Local", file.File.Id, file.FileInfo.FullName);
-						var conflict = ".conflict-" + file.FileInfo.LastWriteTimeUtc.ToString("o");
-						Console.WriteLine(conflict);
-						// Console.WriteLine("Removing local file");
-						file.FileInfo.MoveTo(file.FileInfo.FullName + conflict);
-						file.FileInfo = null;
-					}
-					else
-					{
-						Console.WriteLine("{0} {1} Sync - Update Drive", file.File.Id, file.FileInfo.FullName);
-						var conflict = ".conflict-" + file.File.ModifiedTime.GetValueOrDefault(DateTime.Now).ToUniversalTime().ToString("o");
-						// Console.WriteLine("Removing Drive file");
-						var trash = new Google.Apis.Drive.v3.Data.File();
-						trash.Name = file.File.Name + conflict;
-						DriveService.Files.Update(trash, file.File.Id).Execute();
-
-						/*
-						var request = DriveService.Files.Delete(file.File.Id);
-						request.Execute();
-						*/
-						file.File = null;
-					}
-					SyncFile(file);
-					return;
-				}
-				else
-				{
-					Console.WriteLine("{0} {1} Sync - Metadata", file.File.Id, file.FileInfo.FullName);
-					// Update modification time to match Google Drive.
-					// Console.WriteLine("{0} {1}", file.FileInfo.LastWriteTime, file.File.ModifiedTime.GetValueOrDefault(file.FileInfo.LastAccessTime));
-					/*
-					if (file.FileInfo.LastWriteTime != file.File.ModifiedTime.GetValueOrDefault(file.FileInfo.LastAccessTime))
-						file.FileInfo.LastWriteTime = file.File.ModifiedTime.GetValueOrDefault(file.FileInfo.LastAccessTime);
-					*/
-					file.Synchronized = true;
-				}
+					break;
 			}
-			else if (file.File != null)
-			{
-				if (file.File.MimeType == "application/vnd.google-apps.folder")
-				{
-					System.IO.Directory.CreateDirectory(fname);
-					file.DirectoryInfo = new DirectoryInfo(fname);
-				}
-				else
-				{
-					var output = new System.IO.StreamWriter(fname);
-					var download = DriveService.Files.Get(file.File.Id);
-					download.Download(output.BaseStream);
-					output.Close();
-					file.FileInfo = new FileInfo(fname);
-				}
-				file.Synchronized = true;
-				Console.WriteLine(file.FileInfo);
-			}
-			else
-			{
-				var gfile = new Google.Apis.Drive.v3.Data.File();
-				var parent = PathMap[System.IO.Path.GetDirectoryName(file.Path)];
-				gfile.Name = System.IO.Path.GetFileName(file.Path);
-				gfile.ModifiedTime = file.FileSystemInfo.LastWriteTime;
-				gfile.Parents = new string[] { parent.File.Id };
-				if (file.DirectoryInfo != null)
-					gfile.MimeType = "application/vnd.google-apps.folder";
 
-				if (true)
-				{
-					var request = DriveService.Files.Create(gfile);
-					request.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size";
-					gfile = request.Execute();
-					Console.WriteLine("{0} {1}", gfile.Id, gfile.Name);
-				}
-				if (file.FileInfo != null)
-				{
-					Console.WriteLine("Uploading");
-					var input = new System.IO.StreamReader(fname);
-					var request = DriveService.Files.Update(null, gfile.Id, input.BaseStream, "");
-					request.Upload();
-					input.Close();
-				}
-				file.File = gfile;
-				file.Synchronized = true;
-			}
 		}
 
 		public void DoSync()
@@ -461,6 +560,8 @@ namespace FSync
 						}
 					}
 
+					unifiedFile.Modify(change.File);
+
 					// New: fileId !in IdMap and DrivePath in Root.
 					if (unifiedFile == null)
 					{
@@ -485,7 +586,7 @@ namespace FSync
 							try
 							{
 								// unifiedFile.FileInfo.MoveTo(change.File.Name);
-								Console.WriteLine(unifiedFile.FileInfo.FullName);
+								Console.WriteLine(unifiedFile.Inode.FullName);
 							}
 							catch (Exception e)
 							{
@@ -553,7 +654,7 @@ namespace FSync
 			timer.Start();
 
 			FileSystemWatcher watcher = new FileSystemWatcher();
-			watcher.Path = Root.DirectoryInfo.FullName;
+			watcher.Path = Root.Inode.FullName;
 			watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
 			watcher.Filter = "*";
 
