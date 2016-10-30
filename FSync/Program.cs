@@ -11,6 +11,7 @@ using System.Threading;
 
 namespace FSync
 {
+
 	public enum ChangeEventTypes
 	{
 		Changed,
@@ -162,7 +163,11 @@ namespace FSync
 		// Compare File and Inode to generate state
 		public void CalculateStatus()
 		{
-			if (File == null)
+			if (File == null && Inode == null)
+			{
+				Console.WriteLine("CalculateStatus: Delete");
+			}
+			else if (File == null)
 			{
 				Console.WriteLine("CalculateStatus: LocalCreate");
 				mStatus = State.LocalCreate;
@@ -240,11 +245,22 @@ namespace FSync
 
 		public void Dirty(Google.Apis.Drive.v3.Data.File file)
 		{
-			if (file == null)
+			if (file == null || File == null)
 				return;
 			if (file.Version == File.Version)
 				return;
-			throw new NotImplementedException();
+			if (file.Trashed.GetValueOrDefault(false))
+			{
+				mStatus = State.RemoteDelete;
+			}
+			else if (file.Md5Checksum != File.Md5Checksum)
+			{
+				mStatus = State.RemoteUpdate;
+			}
+			else
+			{
+				throw new NotImplementedException();
+			}
 		}
 		public void Dirty(FileSystemInode file)
 		{
@@ -374,12 +390,19 @@ namespace FSync
 				paths.Insert(0, parent.Name);
 				parent = GetDriveFileParent(parent);
 			} while (parent != null && parent.Id != Root.File.Id);
-			paths.Insert(0, "/");
 
-			var path = System.IO.Path.Combine(paths.ToArray()); 
-			IdMap[file.Id] = path;
-
-			return path;
+			string path;
+			if (parent.Id == Root.File.Id)
+			{
+				paths.Insert(0, "/");
+				path = System.IO.Path.Combine(paths.ToArray());
+				IdMap[file.Id] = path;
+				return path;
+			}
+			else
+			{
+				return System.IO.Path.Combine(paths.ToArray());
+			}
 		}
 
 		public UnifiedFile GetUnifiedFile(params object[] args)
@@ -648,7 +671,7 @@ namespace FSync
 						updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
 						updateRequest.Upload();
 						if (updateRequest.GetProgress().Status != Google.Apis.Upload.UploadStatus.Completed)
-							throw new ApplicationException("Upload failed");
+							throw updateRequest.GetProgress().Exception;
 						file.File = updateRequest.ResponseBody;
 						input.Close();
 					}
@@ -745,16 +768,34 @@ namespace FSync
 				{
 					if (!change.Removed.GetValueOrDefault(false))
 					{
-						Console.WriteLine("{0} {1} {2} {3}", change.File.Id, change.File.Name, change.File.Version, change.TimeRaw);
+						Console.WriteLine("DriveChange: {0} {1} {2} {3}", change.File.Id, change.File.Name, change.File.Version, change.TimeRaw);
 
 						// TODO: Handle folders
 						if (change.File.MimeType == "application/vnd.google-apps.folder")
 							continue;
 					}
-					else {
-						Console.WriteLine(change);
+					else
+					{
+						Console.WriteLine("Removed: {0} {1}", change.FileId, change.File);
+						foreach (var f in PathMap.Values)
+						{
+							if (f.File.Id == change.FileId)
+							{
+								SyncQueue.Enqueue(new ChangeEvent
+								{
+									file = new Google.Apis.Drive.v3.Data.File {
+										Id = change.FileId,
+									},
+									path = f.Path,
+								});
+								break;
+							}
+						}
+						continue;
 					}
-					SyncQueue.Enqueue(new ChangeEvent { file = change.File, path = GetDrivePath(change.File) });
+
+					if (change.File != null)
+						SyncQueue.Enqueue(new ChangeEvent { file = change.File, path = GetDrivePath(change.File) });
 					/*
 
 					var path = GetDrivePath(change.File);
@@ -856,8 +897,8 @@ namespace FSync
 				{
 					if (!PathMap.ContainsKey(change.path))
 						AddFile(GetUnifiedFile(change.file, change.inode));
-
 					var unifiedFile = PathMap[change.path];
+
 					unifiedFile.Dirty(change.file);
 					unifiedFile.Dirty(change.inode);
 					SynchronizeFile(unifiedFile);
