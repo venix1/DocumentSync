@@ -11,15 +11,98 @@ using System.Threading;
 
 namespace FSync
 {
-
-	public enum ChangeEventTypes
+	public abstract class SyncEvent
 	{
-		Changed,
-		Created,
-		Renamed,
-		Deleted
 	}
 
+	public abstract class DriveSyncEvent : SyncEvent
+	{
+		public Google.Apis.Drive.v3.Data.File File;
+
+		public DriveSyncEvent()
+		{ }
+		public DriveSyncEvent(string fileId)
+		{
+			File = new Google.Apis.Drive.v3.Data.File();
+			File.Id = fileId;
+		}
+	}
+
+	public class DriveCreatedEvent : DriveSyncEvent
+	{
+		public DriveCreatedEvent(Google.Apis.Drive.v3.Data.File file)
+		{
+			File = file;
+		}
+	}
+
+	public class DriveChangedEvent : DriveSyncEvent
+	{
+		public UnifiedFile UnifiedFile;
+
+		public DriveChangedEvent(UnifiedFile unifiedFile, Google.Apis.Drive.v3.Data.File file)
+		{
+			UnifiedFile = unifiedFile;
+			File = file;
+		}
+	}
+
+	public class DriveDeletedEvent : DriveSyncEvent
+	{
+		public DriveDeletedEvent(string fileId) : base(fileId)
+		{
+		}
+	}
+
+	public class DriveRenamedEvent : DriveSyncEvent
+	{
+		public UnifiedFile OldFile;
+
+		public DriveRenamedEvent(UnifiedFile oldFile, Google.Apis.Drive.v3.Data.File newFile)
+		{
+			OldFile = oldFile;
+			File = newFile;
+		}
+	}
+
+	public abstract class FileSyncEvent : SyncEvent
+	{
+		public FileSystemInode Inode;
+
+		public FileSyncEvent(FileSystemInode inode)
+		{
+			Inode = inode;
+		}
+	}
+
+	public class FileChangedEvent : FileSyncEvent
+	{
+		public FileChangedEvent(FileSystemInode inode) : base(inode)
+		{ }
+	}
+
+	public class FileCreatedEvent : FileSyncEvent
+	{
+		public FileCreatedEvent(FileSystemInode inode) : base(inode)
+		{ }
+	}
+
+	public class FileDeletedEvent : FileSyncEvent
+	{
+		public FileDeletedEvent(FileSystemInode inode) : base(inode)
+		{ }
+	}
+
+	public class FileRenamedEvent : FileSyncEvent
+	{
+		public string OldFullPath { get; set;}
+
+		public FileRenamedEvent(string oldPath, FileSystemInode inode) : base(inode)
+		{
+			OldFullPath = oldPath;
+		}
+	}
+	/*
 	public struct ChangeEvent
 	{
 		public string source;
@@ -28,6 +111,8 @@ namespace FSync
 		public Google.Apis.Drive.v3.Data.File file;
 		public FileSystemInode inode;
 	}
+	*/
+
 	public class FileSystemInode
 	{
 		public FileSystemInfo FileSystemInfo { get; set; }
@@ -109,7 +194,7 @@ namespace FSync
 
 	}
 
-	class UnifiedFile
+	public class UnifiedFile
 	{
 		[Flags]
 		public enum State
@@ -212,6 +297,7 @@ namespace FSync
 				return !IsDirectory;
 			}
 		}
+
 		public bool IsLocalUpdate
 		{
 			get
@@ -331,7 +417,7 @@ namespace FSync
 
 	class UnifiedFileSystem
 	{
-		Queue<ChangeEvent> SyncQueue { get; set; }
+		Queue<SyncEvent> SyncQueue { get; set; }
 		Dictionary<string, UnifiedFile> PathMap { get; set;}
 		Dictionary<string, string> IdMap { get; set;}
 
@@ -342,7 +428,7 @@ namespace FSync
 
 		public UnifiedFileSystem(DriveService driveService, Google.Apis.Drive.v3.Data.File file, FileSystemInfo path)
 		{
-			SyncQueue = new Queue<ChangeEvent>();
+			SyncQueue = new Queue<SyncEvent>();
 			PathMap = new Dictionary<string, UnifiedFile>();
 			IdMap = new Dictionary<string, string>();
 
@@ -473,6 +559,15 @@ namespace FSync
 
 			return unifiedFile;
 		}
+		public UnifiedFile GetUnifiedFileById(string id)
+		{
+			foreach (var file in PathMap.Values)
+			{
+				if (file.File.Id == id)
+					return file;
+			}
+			return null;
+		}
 
 		public string BuildLocalPath(string path)
 		{
@@ -537,8 +632,7 @@ namespace FSync
 			
 		}
 
-		public void ScanDrive(UnifiedFile root) { } 
-		public void FindFiles(UnifiedFile root)
+		public void ScanDrive(UnifiedFile root) 
 		{
 			FilesResource.ListRequest listRequest = DriveService.Files.List();
 			listRequest.PageSize = 10;
@@ -546,21 +640,12 @@ namespace FSync
 			listRequest.Q = "'" + root.File.Id + "' in parents and trashed != true";
 
 			var folders = new List<UnifiedFile>();
-			// Console.WriteLine("Files in " + root.File.Name);
 			do
 			{
 				FileList files = listRequest.Execute();
 				listRequest.PageToken = files.NextPageToken;
 				foreach (var file in files.Files)
 				{
-					/*
-					Console.WriteLine("  {0} ({1} - {2})", file.Name, file.Id, file.MimeType);
-					Console.Write("  Parents:");
-					foreach(var parent in file.Parents)
-						Console.Write(" {0}", parent);
-					Console.WriteLine();
-					*/
-					// Console.WriteLine(" {2} {3} {4}", file.Name, file.Id, file.Size, file.ModifiedTime, file.Md5Checksum)
 					if (file.MimeType == "application/vnd.google-apps.folder")
 					{
 						folders.Add(AddFile(file));
@@ -575,7 +660,7 @@ namespace FSync
 
 			foreach (var folder in folders)
 			{
-				FindFiles(folder);
+				ScanDrive(folder);
 			}
 		}
 
@@ -736,7 +821,7 @@ namespace FSync
 
 		public void DoSync()
 		{
-			FindFiles(Root);
+			ScanDrive(Root);
 			ScanDisk(Root);
 			Watch();
 			Converge();
@@ -766,108 +851,33 @@ namespace FSync
 				var changes = request.Execute();
 				foreach (var change in changes.Changes)
 				{
-					if (!change.Removed.GetValueOrDefault(false))
-					{
-						Console.WriteLine("DriveChange: {0} {1} {2} {3}", change.File.Id, change.File.Name, change.File.Version, change.TimeRaw);
+					SyncEvent syncEvent = null;
 
-						// TODO: Handle folders
-						if (change.File.MimeType == "application/vnd.google-apps.folder")
-							continue;
-					}
-					else
+					if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false))
 					{
 						Console.WriteLine("Removed: {0} {1}", change.FileId, change.File);
-						foreach (var f in PathMap.Values)
-						{
-							if (f.File.Id == change.FileId)
-							{
-								SyncQueue.Enqueue(new ChangeEvent
-								{
-									file = new Google.Apis.Drive.v3.Data.File {
-										Id = change.FileId,
-									},
-									path = f.Path,
-								});
-								break;
-							}
-						}
-						continue;
+						syncEvent = new DriveDeletedEvent(change.FileId);
 					}
-
-					if (change.File != null)
-						SyncQueue.Enqueue(new ChangeEvent { file = change.File, path = GetDrivePath(change.File) });
-					/*
-
-					var path = GetDrivePath(change.File);
-
-					UnifiedFile unifiedFile = null;
-					foreach (var file in PathMap.Values)
-					{
-						if (file.File.Id == change.FileId)
-						{
-							unifiedFile = file;
-							break;
-						}
-					}
-
-					// New: fileId !in IdMap and DrivePath in Root.
-					if (unifiedFile == null)
-					{
-						Console.WriteLine("{0} {1} Drive - Created", change.FileId, path);
-						evt.path = path;
-						evt.type
-						PendingSync.Add(AddFile(change.File).Path);
-					}
-					// Existing: fileId in IdMap.
 					else
 					{
-						unifiedFile.Modify(change.File);
+						UnifiedFile unifiedFile = GetUnifiedFileById(change.FileId);
 
-						// Delete: remove or trash set.
-						if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false))
+						if (unifiedFile == null)
 						{
-							Console.WriteLine("{0} {1} Drive - Deleted", change.FileId, path);
-							// System.IO.File.Delete(unifiedFile.FileSystemInfo.FullName);
-							// PendingSync.Add(path);
+							syncEvent = new DriveCreatedEvent(change.File);
 						}
-
-						// Rename: 
 						else if (unifiedFile.File.Name != change.File.Name)
 						{
-							Console.WriteLine("DriveRenamed: {0} {1}", change.FileId, path);
-							try
-							{
-								// unifiedFile.FileInfo.MoveTo(change.File.Name);
-								Console.WriteLine(unifiedFile.Inode.FullName);
-							}
-							catch (Exception e)
-							{
-								Console.WriteLine(e);
-							}
-							// Does parent = parent.
-							// Does name = name
-						}
-
-						// Change: md5sum mismatch
-						else if (unifiedFile.File.Md5Checksum != change.File.Md5Checksum)
-						{
-							Console.WriteLine("{0} {1} Drive - Changed", change.FileId, path);
+							syncEvent = new DriveRenamedEvent(unifiedFile, change.File);
 						}
 						else
 						{
-							// New uploads fall into this category.
-							Console.WriteLine("{0} {1} Drive - Unknown", change.FileId, path);							
+							Console.WriteLine("{0} - {0}", unifiedFile.Path, change.File.Name);
+
+							syncEvent = new DriveChangedEvent(unifiedFile, change.File);
 						}
 					}
-					*/
-
-					/*
-					Console.WriteLine("Change found for file: " + change.FileId);
-					Console.WriteLine("  Removed: {0}  Time: {1}", change.Removed, change.Time);
-					Console.WriteLine("  Name: {0}  Size: {1}  MD5: {2}", change.File.Name, change.File.Size, change.File.Md5Checksum);
-					Console.WriteLine("  MimeType: {0}", change.File.MimeType);
-					Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(change));
-					*/
+					SyncQueue.Enqueue(syncEvent);
 				}
 				if (changes.NewStartPageToken != null)
 				{
@@ -890,11 +900,13 @@ namespace FSync
 				GetDriveChanges();
 
 				var queue = SyncQueue;
-				SyncQueue = new Queue<ChangeEvent>();
+				SyncQueue = new Queue<SyncEvent>();
 
 				Console.WriteLine("Executing sync queue. {0}", queue.Count);
 				foreach (var change in queue)
 				{
+					Console.WriteLine("Change: {0}", change.GetType());
+					/*
 					if (!PathMap.ContainsKey(change.path))
 						AddFile(GetUnifiedFile(change.file, change.inode));
 					var unifiedFile = PathMap[change.path];
@@ -902,6 +914,7 @@ namespace FSync
 					unifiedFile.Dirty(change.file);
 					unifiedFile.Dirty(change.inode);
 					SynchronizeFile(unifiedFile);
+					*/
 				}
 			}
 			catch (Exception ex)
@@ -935,12 +948,22 @@ namespace FSync
 			try
 			{
 				Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
-				SyncQueue.Enqueue(new ChangeEvent
+				SyncEvent syncEvent = null;
+				switch (e.ChangeType)
 				{
-					source = "FileSystemWatcher",
-					path = BuildRelativePath(e.FullPath),
-					inode = new FileSystemInode(e.FullPath)
-				});
+					case WatcherChangeTypes.Changed:
+						syncEvent = new FileChangedEvent(new FileSystemInode(e.FullPath));
+						break;
+					case WatcherChangeTypes.Created:
+						syncEvent = new FileCreatedEvent(new FileSystemInode(e.FullPath));
+						break;
+					case WatcherChangeTypes.Deleted:
+						syncEvent = new FileDeletedEvent(new FileSystemInode(e.FullPath));
+						break;
+					default:
+						throw new Exception("unhandled ChangeType");
+				}
+				SyncQueue.Enqueue(syncEvent);
 			}
 			catch (Exception ex)
 			{
@@ -951,25 +974,8 @@ namespace FSync
 		private void OnRenamed(object source, RenamedEventArgs e)
 		{
 			Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
+			SyncQueue.Enqueue(new FileRenamedEvent (e.OldFullPath, new FileSystemInode(e.FullPath)));
 		}			
-	}
-
-	class TreeNode<T>
-	{
-		List<TreeNode<T>> Children;
-
-		T Item { get; set;}
-
-		public TreeNode(T item)
-		{
-			Item = item;
-		}
-		public TreeNode<T> AddChild(T item)
-		{
-			TreeNode<T> nodeItem = new TreeNode<T>(item);
-			Children.Add(nodeItem);
-			return nodeItem;
-		}
 	}
 
 	class MainClass
