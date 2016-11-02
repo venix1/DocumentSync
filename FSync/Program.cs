@@ -63,8 +63,13 @@ namespace FSync
 
 	public abstract class FileSyncEventArgs : EventArgs
 	{
+		public UnifiedFile UnifiedFile { get; set;}
 		public FileSystemInode Inode;
 
+		public FileSyncEventArgs(UnifiedFile unifiedFile)
+		{
+			UnifiedFile = unifiedFile;
+		}
 		public FileSyncEventArgs(FileSystemInode inode)
 		{
 			Inode = inode;
@@ -73,18 +78,26 @@ namespace FSync
 
 	public class FileChangedEventArgs : FileSyncEventArgs
 	{
+		public FileChangedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
+		{ }
+
 		public FileChangedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
 	public class FileCreatedEventArgs : FileSyncEventArgs
 	{
+		public FileCreatedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
+		{ }
+
 		public FileCreatedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
 	public class FileDeletedEventArgs : FileSyncEventArgs
 	{
+		public FileDeletedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
+		{ }
 		public FileDeletedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
@@ -413,6 +426,7 @@ namespace FSync
 
 	class UnifiedFileSystem
 	{
+		IDictionary<Type, EventHandler> mEventHandlers;
 		Queue<EventArgs> SyncQueue { get; set; }
 		Dictionary<string, UnifiedFile> PathMap { get; set;}
 		Dictionary<string, string> IdMap { get; set;}
@@ -427,6 +441,9 @@ namespace FSync
 			SyncQueue = new Queue<EventArgs>();
 			PathMap = new Dictionary<string, UnifiedFile>();
 			IdMap = new Dictionary<string, string>();
+			mEventHandlers = new Dictionary<Type, EventHandler>();
+
+			// mEventHandlers[typeof(DriveChangedEventArgs)] = OnDriveChanged;
 
 			DriveService = driveService;
 			Root = new UnifiedFile(file, path);
@@ -514,6 +531,14 @@ namespace FSync
 					if (fileSystemInode != null)
 						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
 					fileSystemInode = (FileSystemInode)arg;
+				}
+				else if (arg is string)
+				{
+					var str = (string)arg;
+					if (str[0] == '/')
+						fileSystemInode = new FileSystemInode(str);
+					else
+						throw new Exception("Only paths supported");
 				}
 				else if (arg == null)
 				{ }
@@ -889,6 +914,42 @@ namespace FSync
 			}
 		}
 
+		void ExecuteDriveChangedEvent(DriveChangedEventArgs e)
+		{
+			if (e.File.Version == e.UnifiedFile.File.Version)
+				return;
+
+			e.UnifiedFile.File = e.File;
+			if (e.UnifiedFile.Inode.IsFile && e.File.Md5Checksum != e.UnifiedFile.Inode.Md5Checksum)
+			{
+				var output = new System.IO.StreamWriter(e.UnifiedFile.Inode.FullName);
+				var download = DriveService.Files.Get(e.UnifiedFile.File.Id);
+				download.Download(output.BaseStream);
+
+				output.Close();
+			}
+		}
+
+		void ExecuteFileChangedEvent(FileChangedEventArgs e)
+		{
+			var gfile = new Google.Apis.Drive.v3.Data.File();
+			gfile.ModifiedTime = e.UnifiedFile.Inode.ModifiedTime;
+
+			if (e.UnifiedFile.IsFile)
+			{
+				string fname = Root.Inode.FullName + e.UnifiedFile.Path;
+
+				var input = new System.IO.StreamReader(fname);
+				var updateRequest = DriveService.Files.Update(null, e.UnifiedFile.File.Id, input.BaseStream, "");
+				updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+				updateRequest.Upload();
+				if (updateRequest.GetProgress().Status != Google.Apis.Upload.UploadStatus.Completed)
+					throw updateRequest.GetProgress().Exception;
+				e.UnifiedFile.File = updateRequest.ResponseBody;
+				input.Close();
+			}
+		}
+
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
 		{
 			try
@@ -902,6 +963,14 @@ namespace FSync
 				foreach (var change in queue)
 				{
 					Console.WriteLine("Change: {0}", change.GetType());
+
+					if (change is DriveChangedEventArgs)
+						ExecuteDriveChangedEvent((DriveChangedEventArgs)change);
+					else if (change is FileChangedEventArgs)
+						ExecuteFileChangedEvent((FileChangedEventArgs)change);
+					else
+					{ } // throw new Exception("Unknown Event type");
+
 					/*
 					if (!PathMap.ContainsKey(change.path))
 						AddFile(GetUnifiedFile(change.file, change.inode));
@@ -945,16 +1014,17 @@ namespace FSync
 			{
 				Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
 				EventArgs syncEvent = null;
+				UnifiedFile unifiedFile = GetUnifiedFile(e.FullPath);
 				switch (e.ChangeType)
 				{
 					case WatcherChangeTypes.Changed:
-						syncEvent = new FileChangedEventArgs(new FileSystemInode(e.FullPath));
+						syncEvent = new FileChangedEventArgs(unifiedFile);
 						break;
 					case WatcherChangeTypes.Created:
-						syncEvent = new FileCreatedEventArgs(new FileSystemInode(e.FullPath));
+						syncEvent = new FileCreatedEventArgs(unifiedFile);
 						break;
 					case WatcherChangeTypes.Deleted:
-						syncEvent = new FileDeletedEventArgs(new FileSystemInode(e.FullPath));
+						syncEvent = new FileDeletedEventArgs(unifiedFile);
 						break;
 					default:
 						throw new Exception("unhandled ChangeType");
