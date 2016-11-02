@@ -11,93 +11,89 @@ using System.Threading;
 
 namespace FSync
 {
-	public abstract class SyncEvent
-	{
-	}
-
-	public abstract class DriveSyncEvent : SyncEvent
+	public abstract class DriveSyncEventArgs : EventArgs
 	{
 		public Google.Apis.Drive.v3.Data.File File;
 
-		public DriveSyncEvent()
+		public DriveSyncEventArgs()
 		{ }
-		public DriveSyncEvent(string fileId)
+		public DriveSyncEventArgs(string fileId)
 		{
 			File = new Google.Apis.Drive.v3.Data.File();
 			File.Id = fileId;
 		}
 	}
 
-	public class DriveCreatedEvent : DriveSyncEvent
+	public class DriveCreatedEventArgs : DriveSyncEventArgs
 	{
-		public DriveCreatedEvent(Google.Apis.Drive.v3.Data.File file)
+		public DriveCreatedEventArgs(Google.Apis.Drive.v3.Data.File file)
 		{
 			File = file;
 		}
 	}
 
-	public class DriveChangedEvent : DriveSyncEvent
+	public class DriveChangedEventArgs : DriveSyncEventArgs
 	{
 		public UnifiedFile UnifiedFile;
 
-		public DriveChangedEvent(UnifiedFile unifiedFile, Google.Apis.Drive.v3.Data.File file)
+		public DriveChangedEventArgs(UnifiedFile unifiedFile, Google.Apis.Drive.v3.Data.File file)
 		{
 			UnifiedFile = unifiedFile;
 			File = file;
 		}
 	}
 
-	public class DriveDeletedEvent : DriveSyncEvent
+	public class DriveDeletedEventArgs : DriveSyncEventArgs
 	{
-		public DriveDeletedEvent(string fileId) : base(fileId)
+		public DriveDeletedEventArgs(string fileId) : base(fileId)
 		{
 		}
 	}
 
-	public class DriveRenamedEvent : DriveSyncEvent
+	public class DriveRenamedEventArgs : DriveSyncEventArgs
 	{
 		public UnifiedFile OldFile;
 
-		public DriveRenamedEvent(UnifiedFile oldFile, Google.Apis.Drive.v3.Data.File newFile)
+		public DriveRenamedEventArgs(UnifiedFile oldFile, Google.Apis.Drive.v3.Data.File newFile)
 		{
 			OldFile = oldFile;
 			File = newFile;
 		}
 	}
 
-	public abstract class FileSyncEvent : SyncEvent
+	public abstract class FileSyncEventArgs : EventArgs
 	{
 		public FileSystemInode Inode;
 
-		public FileSyncEvent(FileSystemInode inode)
+		public FileSyncEventArgs(FileSystemInode inode)
 		{
 			Inode = inode;
 		}
 	}
 
-	public class FileChangedEvent : FileSyncEvent
+	public class FileChangedEventArgs : FileSyncEventArgs
 	{
-		public FileChangedEvent(FileSystemInode inode) : base(inode)
+		public FileChangedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
-	public class FileCreatedEvent : FileSyncEvent
+	public class FileCreatedEventArgs : FileSyncEventArgs
 	{
-		public FileCreatedEvent(FileSystemInode inode) : base(inode)
+		public FileCreatedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
-	public class FileDeletedEvent : FileSyncEvent
+	public class FileDeletedEventArgs : FileSyncEventArgs
 	{
-		public FileDeletedEvent(FileSystemInode inode) : base(inode)
+		public FileDeletedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
-	public class FileRenamedEvent : FileSyncEvent
+	public class FileRenamedEventArgs : FileSyncEventArgs
 	{
 		public string OldFullPath { get; set;}
 
-		public FileRenamedEvent(string oldPath, FileSystemInode inode) : base(inode)
+		public FileRenamedEventArgs(string oldPath, FileSystemInode inode) : base(inode)
 		{
 			OldFullPath = oldPath;
 		}
@@ -417,7 +413,7 @@ namespace FSync
 
 	class UnifiedFileSystem
 	{
-		Queue<SyncEvent> SyncQueue { get; set; }
+		Queue<EventArgs> SyncQueue { get; set; }
 		Dictionary<string, UnifiedFile> PathMap { get; set;}
 		Dictionary<string, string> IdMap { get; set;}
 
@@ -428,7 +424,7 @@ namespace FSync
 
 		public UnifiedFileSystem(DriveService driveService, Google.Apis.Drive.v3.Data.File file, FileSystemInfo path)
 		{
-			SyncQueue = new Queue<SyncEvent>();
+			SyncQueue = new Queue<EventArgs>();
 			PathMap = new Dictionary<string, UnifiedFile>();
 			IdMap = new Dictionary<string, string>();
 
@@ -851,12 +847,12 @@ namespace FSync
 				var changes = request.Execute();
 				foreach (var change in changes.Changes)
 				{
-					SyncEvent syncEvent = null;
+					EventArgs syncEvent = null;
 
 					if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false))
 					{
 						Console.WriteLine("Removed: {0} {1}", change.FileId, change.File);
-						syncEvent = new DriveDeletedEvent(change.FileId);
+						syncEvent = new DriveDeletedEventArgs(change.FileId);
 					}
 					else
 					{
@@ -864,17 +860,17 @@ namespace FSync
 
 						if (unifiedFile == null)
 						{
-							syncEvent = new DriveCreatedEvent(change.File);
+							syncEvent = new DriveCreatedEventArgs(change.File);
 						}
 						else if (unifiedFile.File.Name != change.File.Name)
 						{
-							syncEvent = new DriveRenamedEvent(unifiedFile, change.File);
+							syncEvent = new DriveRenamedEventArgs(unifiedFile, change.File);
 						}
 						else
 						{
 							Console.WriteLine("{0} - {0}", unifiedFile.Path, change.File.Name);
 
-							syncEvent = new DriveChangedEvent(unifiedFile, change.File);
+							syncEvent = new DriveChangedEventArgs(unifiedFile, change.File);
 						}
 					}
 					SyncQueue.Enqueue(syncEvent);
@@ -900,7 +896,7 @@ namespace FSync
 				GetDriveChanges();
 
 				var queue = SyncQueue;
-				SyncQueue = new Queue<SyncEvent>();
+				SyncQueue = new Queue<EventArgs>();
 
 				Console.WriteLine("Executing sync queue. {0}", queue.Count);
 				foreach (var change in queue)
@@ -948,17 +944,17 @@ namespace FSync
 			try
 			{
 				Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
-				SyncEvent syncEvent = null;
+				EventArgs syncEvent = null;
 				switch (e.ChangeType)
 				{
 					case WatcherChangeTypes.Changed:
-						syncEvent = new FileChangedEvent(new FileSystemInode(e.FullPath));
+						syncEvent = new FileChangedEventArgs(new FileSystemInode(e.FullPath));
 						break;
 					case WatcherChangeTypes.Created:
-						syncEvent = new FileCreatedEvent(new FileSystemInode(e.FullPath));
+						syncEvent = new FileCreatedEventArgs(new FileSystemInode(e.FullPath));
 						break;
 					case WatcherChangeTypes.Deleted:
-						syncEvent = new FileDeletedEvent(new FileSystemInode(e.FullPath));
+						syncEvent = new FileDeletedEventArgs(new FileSystemInode(e.FullPath));
 						break;
 					default:
 						throw new Exception("unhandled ChangeType");
@@ -974,7 +970,7 @@ namespace FSync
 		private void OnRenamed(object source, RenamedEventArgs e)
 		{
 			Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
-			SyncQueue.Enqueue(new FileRenamedEvent (e.OldFullPath, new FileSystemInode(e.FullPath)));
+			SyncQueue.Enqueue(new FileRenamedEventArgs (e.OldFullPath, new FileSystemInode(e.FullPath)));
 		}			
 	}
 
