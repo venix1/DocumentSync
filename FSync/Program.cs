@@ -1069,7 +1069,7 @@ namespace FSync
 
 		private void OnChanged(object source, FileSystemEventArgs e)
 		{
-			lock(source)
+			lock(SyncQueue)
 			{
 				try
 				{
@@ -1101,8 +1101,11 @@ namespace FSync
 
 		private void OnRenamed(object source, RenamedEventArgs e)
 		{
-			Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
-			SyncQueue.Enqueue(new FileRenamedEventArgs (e.OldFullPath, new FileSystemInode(e.FullPath)));
+			lock(SyncQueue)
+			{
+				Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
+				SyncQueue.Enqueue(new FileRenamedEventArgs(e.OldFullPath, new FileSystemInode(e.FullPath)));
+			}
 		}			
 	}
 
