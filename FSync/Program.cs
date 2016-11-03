@@ -916,6 +916,7 @@ namespace FSync
 
 		void ExecuteDriveChangedEvent(DriveChangedEventArgs e)
 		{
+			Console.WriteLine("Executing Drive Changed Event");
 			if (e.File.Version == e.UnifiedFile.File.Version)
 				return;
 
@@ -930,8 +931,25 @@ namespace FSync
 			}
 		}
 
+		void ExecuteDriveCreatedEvent(DriveCreatedEventArgs e)
+		{
+			Console.WriteLine("Executing Drive Created Event");
+
+		}
+
+		void ExecuteDriveDeletedEvent(DriveDeletedEventArgs e)
+		{
+			Console.WriteLine("Executing Drive Deleted event");
+		}
+
+		void ExecuteDriveRenamedEvent(DriveRenamedEventArgs e)
+		{
+			Console.WriteLine("Executing Drive Renamed Event");
+		}
+
 		void ExecuteFileChangedEvent(FileChangedEventArgs e)
 		{
+			Console.WriteLine("Executing File Changed event");
 			var gfile = new Google.Apis.Drive.v3.Data.File();
 			gfile.ModifiedTime = e.UnifiedFile.Inode.ModifiedTime;
 
@@ -950,6 +968,34 @@ namespace FSync
 			}
 		}
 
+		void ExecuteFileCreatedEvent(FileCreatedEventArgs e)
+		{
+			Console.WriteLine("Executing File created event");
+			var gfile = new Google.Apis.Drive.v3.Data.File();
+			var parent = PathMap[System.IO.Path.GetDirectoryName(e.UnifiedFile.Path)];
+
+			gfile.Name = System.IO.Path.GetFileName(e.UnifiedFile.Path);
+			gfile.ModifiedTime = e.UnifiedFile.Inode.ModifiedTime;
+			gfile.Parents = new string[] { parent.File.Id };
+			if (e.UnifiedFile.Inode.IsDirectory)
+				gfile.MimeType = "application/vnd.google-apps.folder";
+
+			var createRequest = DriveService.Files.Create(gfile);
+			createRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+			gfile = createRequest.Execute();
+			e.UnifiedFile.File = gfile;
+		}
+
+		void ExecuteFileDeletedEvent(FileDeletedEventArgs e)
+		{
+			Console.WriteLine("Executing File Deleted Event");
+		}
+
+		void ExecuteFileRenamedEvent(FileRenamedEventArgs e)
+		{
+			Console.WriteLine("Executing File Renamed Event");
+		}
+
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
 		{
 			try
@@ -966,8 +1012,21 @@ namespace FSync
 
 					if (change is DriveChangedEventArgs)
 						ExecuteDriveChangedEvent((DriveChangedEventArgs)change);
+					else if (change is DriveCreatedEventArgs)
+						ExecuteDriveCreatedEvent((DriveCreatedEventArgs)change);
+					else if (change is DriveDeletedEventArgs)
+						ExecuteDriveDeletedEvent((DriveDeletedEventArgs)change);
+					else if (change is DriveRenamedEventArgs)
+						ExecuteDriveRenamedEvent((DriveRenamedEventArgs)change);
+
 					else if (change is FileChangedEventArgs)
 						ExecuteFileChangedEvent((FileChangedEventArgs)change);
+					else if (change is FileCreatedEventArgs)
+						ExecuteFileCreatedEvent((FileCreatedEventArgs)change);
+					else if (change is FileDeletedEventArgs)
+						ExecuteFileDeletedEvent((FileDeletedEventArgs)change);
+					else if(change is FileRenamedEventArgs)
+						ExecuteFileRenamedEvent((FileRenamedEventArgs)change);
 					else
 					{ } // throw new Exception("Unknown Event type");
 
@@ -1010,30 +1069,33 @@ namespace FSync
 
 		private void OnChanged(object source, FileSystemEventArgs e)
 		{
-			try
+			lock(source)
 			{
-				Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
-				EventArgs syncEvent = null;
-				UnifiedFile unifiedFile = GetUnifiedFile(e.FullPath);
-				switch (e.ChangeType)
+				try
 				{
-					case WatcherChangeTypes.Changed:
-						syncEvent = new FileChangedEventArgs(unifiedFile);
-						break;
-					case WatcherChangeTypes.Created:
-						syncEvent = new FileCreatedEventArgs(unifiedFile);
-						break;
-					case WatcherChangeTypes.Deleted:
-						syncEvent = new FileDeletedEventArgs(unifiedFile);
-						break;
-					default:
-						throw new Exception("unhandled ChangeType");
+					Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
+					EventArgs syncEvent = null;
+					UnifiedFile unifiedFile = GetUnifiedFile(e.FullPath);
+					switch (e.ChangeType)
+					{
+						case WatcherChangeTypes.Changed:
+							syncEvent = new FileChangedEventArgs(unifiedFile);
+							break;
+						case WatcherChangeTypes.Created:
+							syncEvent = new FileCreatedEventArgs(unifiedFile);
+							break;
+						case WatcherChangeTypes.Deleted:
+							syncEvent = new FileDeletedEventArgs(unifiedFile);
+							break;
+						default:
+							throw new Exception("unhandled ChangeType");
+					}
+					SyncQueue.Enqueue(syncEvent);
 				}
-				SyncQueue.Enqueue(syncEvent);
+				catch (Exception ex)
+				{
+					Console.WriteLine(ex);
 			}
-			catch (Exception ex)
-			{
-				Console.WriteLine(ex);
 			}
 		}
 
