@@ -511,6 +511,7 @@ namespace FSync
 
 			Google.Apis.Drive.v3.Data.File file = null;
 			FileSystemInode fileSystemInode = null;
+			string path = null;
 
 			foreach (var arg in args)
 			{
@@ -534,9 +535,9 @@ namespace FSync
 				}
 				else if (arg is string)
 				{
-					var str = (string)arg;
-					if (str[0] == '/')
-						fileSystemInode = new FileSystemInode(str);
+					path = (string)arg;
+					if (path[0] == '/')
+						fileSystemInode = new FileSystemInode(path);
 					else
 						throw new Exception("Only paths supported");
 				}
@@ -548,26 +549,24 @@ namespace FSync
 				}
 			}
 
-			string path = "";
-			if (file != null)
-			{
+			if (path != null)
+				path = BuildRelativePath(path);
+			else if (file != null)
 				path = GetDrivePath(file);
-			}
 			else if (fileSystemInode != null)
-			{
 				path = BuildRelativePath(fileSystemInode.FullName);
-			}
 
 			UnifiedFile unifiedFile;
 
 			// TODO: This should be a query function.
 			PathMap.TryGetValue(path, out unifiedFile);
-			Console.WriteLine("GetUnifiedFile: {0} {1} {2} {3}", path,unifiedFile, file, fileSystemInode);
+			Console.WriteLine("GetUnifiedFile: {0} {1} {2}:{3}", path, unifiedFile, file, fileSystemInode);
 
 			if (unifiedFile == null)
 			{
 				unifiedFile = new UnifiedFile(file, fileSystemInode);
 				unifiedFile.Path = path;
+				PathMap[path] = unifiedFile;
 			}
 
 			// TODO: Check if present and call Modify instead.
@@ -979,7 +978,10 @@ namespace FSync
 			gfile.Parents = new string[] { parent.File.Id };
 			if (e.UnifiedFile.Inode.IsDirectory)
 				gfile.MimeType = "application/vnd.google-apps.folder";
-
+			else
+			{
+				// System.Web.MimeMapping.GetMimeMapping(e.UnifiedFile.Inode.FullName);
+			}
 			var createRequest = DriveService.Files.Create(gfile);
 			createRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
 			gfile = createRequest.Execute();
@@ -989,11 +991,15 @@ namespace FSync
 		void ExecuteFileDeletedEvent(FileDeletedEventArgs e)
 		{
 			Console.WriteLine("Executing File Deleted Event");
+
+			DriveService.Files.Delete(e.UnifiedFile.File.Id).Execute();
+			PathMap.Remove(e.UnifiedFile.Path);
 		}
 
 		void ExecuteFileRenamedEvent(FileRenamedEventArgs e)
 		{
 			Console.WriteLine("Executing File Renamed Event");
+			// Parent changed?
 		}
 
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
