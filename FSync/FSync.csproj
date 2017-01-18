@@ -19,6 +19,7 @@
     <WarningLevel>4</WarningLevel>
     <ExternalConsole>true</ExternalConsole>
     <PlatformTarget>x86</PlatformTarget>
+    <Commandlineparameters>PortableApps PortableApps</Commandlineparameters>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
     <Optimize>true</Optimize>
@@ -64,6 +65,9 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="IDocumentStore.cs" />
+    <Compile Include="GoogleDocumentStore.cs" />
+    <Compile Include="FileSystemDocumentStore.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
