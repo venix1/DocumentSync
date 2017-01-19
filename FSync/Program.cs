@@ -9,43 +9,43 @@ using System.Security.Cryptography;
 using System.IO;
 using System.Threading;
 
+using GoogleFile = Google.Apis.Drive.v3.Data.File;
+
 namespace FSync
 {
 	public abstract class DriveSyncEventArgs : EventArgs
 	{
-		public Google.Apis.Drive.v3.Data.File File;
+		public UnifiedFile UnifiedFile { get; set; }
+		public GoogleFile OldFile { get; set;}
+		public GoogleFile NewFile { get; set;}
 
-		public DriveSyncEventArgs()
-		{ }
-		public DriveSyncEventArgs(string fileId)
+		public DriveSyncEventArgs(UnifiedFile unifiedFile)
 		{
-			File = new Google.Apis.Drive.v3.Data.File();
-			File.Id = fileId;
+			UnifiedFile = unifiedFile;
 		}
 	}
 
 	public class DriveCreatedEventArgs : DriveSyncEventArgs
 	{
-		public DriveCreatedEventArgs(Google.Apis.Drive.v3.Data.File file)
+		public DriveCreatedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
 		{
-			File = file;
 		}
 	}
 
 	public class DriveChangedEventArgs : DriveSyncEventArgs
 	{
-		public UnifiedFile UnifiedFile;
-
-		public DriveChangedEventArgs(UnifiedFile unifiedFile, Google.Apis.Drive.v3.Data.File file)
+		public DriveChangedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
 		{
-			UnifiedFile = unifiedFile;
-			File = file;
+		}
+
+		public DriveChangedEventArgs(UnifiedFile unifiedFile, GoogleFile file) : base(unifiedFile)
+		{
 		}
 	}
 
 	public class DriveDeletedEventArgs : DriveSyncEventArgs
 	{
-		public DriveDeletedEventArgs(string fileId) : base(fileId)
+		public DriveDeletedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
 		{
 		}
 	}
@@ -54,10 +54,9 @@ namespace FSync
 	{
 		public UnifiedFile OldFile;
 
-		public DriveRenamedEventArgs(UnifiedFile oldFile, Google.Apis.Drive.v3.Data.File newFile)
+		public DriveRenamedEventArgs(UnifiedFile oldFile, UnifiedFile newFile) : base(newFile)
 		{
 			OldFile = oldFile;
-			File = newFile;
 		}
 	}
 
@@ -70,18 +69,11 @@ namespace FSync
 		{
 			UnifiedFile = unifiedFile;
 		}
-		public FileSyncEventArgs(FileSystemInode inode)
-		{
-			Inode = inode;
-		}
 	}
 
 	public class FileChangedEventArgs : FileSyncEventArgs
 	{
 		public FileChangedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
-		{ }
-
-		public FileChangedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
@@ -89,16 +81,11 @@ namespace FSync
 	{
 		public FileCreatedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
 		{ }
-
-		public FileCreatedEventArgs(FileSystemInode inode) : base(inode)
-		{ }
 	}
 
 	public class FileDeletedEventArgs : FileSyncEventArgs
 	{
 		public FileDeletedEventArgs(UnifiedFile unifiedFile) : base(unifiedFile)
-		{ }
-		public FileDeletedEventArgs(FileSystemInode inode) : base(inode)
 		{ }
 	}
 
@@ -106,7 +93,7 @@ namespace FSync
 	{
 		public string OldFullPath { get; set;}
 
-		public FileRenamedEventArgs(string oldPath, FileSystemInode inode) : base(inode)
+		public FileRenamedEventArgs(string oldPath, UnifiedFile unifiedFile) : base(null)
 		{
 			OldFullPath = oldPath;
 		}
@@ -167,6 +154,15 @@ namespace FSync
 		public bool IsDirectory
 		{
 			get { return DirectoryInfo != null; }
+		}
+
+		public bool Exists {
+			get {
+				if (FileSystemInfo == null)
+					return false;
+
+				return FileSystemInfo.Exists;
+			}
 		}
 
 		public bool IsFile
@@ -424,7 +420,7 @@ namespace FSync
 		}
 	}
 
-	class UnifiedFileSystem
+	public class UnifiedFileSystem
 	{
 		IDictionary<Type, EventHandler> mEventHandlers;
 		Queue<EventArgs> SyncQueue { get; set; }
@@ -515,29 +511,36 @@ namespace FSync
 
 			foreach (var arg in args)
 			{
-				if (arg is Google.Apis.Drive.v3.Data.File)
-				{
+				if (arg is Google.Apis.Drive.v3.Data.File) {
 					if (file != null)
 						throw new ArgumentException("Only one Drive File may be passed.");
 					file = (Google.Apis.Drive.v3.Data.File)arg;
-				}
-				else if (arg is FileSystemInfo)
-				{
+				} else if (arg is FileSystemInfo) {
 					if (fileSystemInode != null)
 						throw new ArgumentException("Multiple FileSystemInfo or FileSystemInode objects passed.");
 					fileSystemInode = new FileSystemInode((FileSystemInfo)arg);
-				}
-				else if (arg is FileSystemInode)
-				{
+				} else if (arg is FileSystemInode) {
 					if (fileSystemInode != null)
 						throw new ArgumentException("Only one FileSystemInfo or FileSystemInode can be used.");
 					fileSystemInode = (FileSystemInode)arg;
-				}
-				else if (arg is string)
-				{
+				} else if (arg is string) {
 					path = (string)arg;
 					if (path[0] == '/')
 						fileSystemInode = new FileSystemInode(path);
+					else if (path.StartsWith("0B_")) {
+						foreach (var f in PathMap.Values) {
+							if (f.File != null && f.File.Id == path) {
+								file = f.File;
+								path = null;
+								break;
+							}
+						}
+						if (file == null) {
+							Console.WriteLine("File not monitored. {0}", path);
+							// throw new DriveFileNotMonitoredException(path);
+							return null;
+						}
+					}
 					else
 						throw new Exception("Only paths supported");
 				}
@@ -548,6 +551,8 @@ namespace FSync
 					throw new ArgumentException("Argument must be Google.Apis.Drive.v3.Data.Files, FileSystemInfo, or FileSystemInode");
 				}
 			}
+
+
 
 			if (path != null)
 				path = BuildRelativePath(path);
@@ -574,8 +579,6 @@ namespace FSync
 				unifiedFile.File = file;
 			else if (fileSystemInode != null)
 				unifiedFile.Inode = fileSystemInode;
-
-			unifiedFile.CalculateStatus();
 
 			return unifiedFile;
 		}
@@ -637,7 +640,7 @@ namespace FSync
 			foreach (var fi in path.EnumerateFiles())
 			{
 				Console.WriteLine("{0}", fi.FullName);
-				AddFile(fi);
+				AddFile(fi).CalculateStatus();
 			}
 
 			foreach (var di in path.EnumerateDirectories())
@@ -672,7 +675,7 @@ namespace FSync
 					}
 					else 
 					{
-						AddFile(file);
+						AddFile(file).CalculateStatus();
 					}
 				}
 
@@ -876,27 +879,20 @@ namespace FSync
 					if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false))
 					{
 						Console.WriteLine("Removed: {0} {1}", change.FileId, change.File);
-						syncEvent = new DriveDeletedEventArgs(change.FileId);
+						syncEvent = new DriveDeletedEventArgs(GetUnifiedFile(change.FileId));
 					}
 					else
 					{
 						UnifiedFile unifiedFile = GetUnifiedFileById(change.FileId);
 
 						if (unifiedFile == null)
-						{
-							syncEvent = new DriveCreatedEventArgs(change.File);
-						}
+							syncEvent = new DriveCreatedEventArgs(unifiedFile);
 						else if (unifiedFile.File.Name != change.File.Name)
-						{
-							syncEvent = new DriveRenamedEventArgs(unifiedFile, change.File);
-						}
+							syncEvent = new DriveRenamedEventArgs(unifiedFile, GetUnifiedFile(change.File));
 						else
-						{
-							Console.WriteLine("{0} - {0}", unifiedFile.Path, change.File.Name);
-
-							syncEvent = new DriveChangedEventArgs(unifiedFile, change.File);
-						}
+							syncEvent = new DriveChangedEventArgs(unifiedFile);
 					}
+					Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
 					SyncQueue.Enqueue(syncEvent);
 				}
 				if (changes.NewStartPageToken != null)
@@ -916,11 +912,11 @@ namespace FSync
 		void ExecuteDriveChangedEvent(DriveChangedEventArgs e)
 		{
 			Console.WriteLine("Executing Drive Changed Event");
-			if (e.File.Version == e.UnifiedFile.File.Version)
+			if (e.UnifiedFile.File.Version == e.UnifiedFile.File.Version)
 				return;
 
-			e.UnifiedFile.File = e.File;
-			if (e.UnifiedFile.Inode.IsFile && e.File.Md5Checksum != e.UnifiedFile.Inode.Md5Checksum)
+			e.UnifiedFile.File = e.NewFile;
+			if (e.UnifiedFile.Inode.IsFile && e.NewFile.Md5Checksum != e.UnifiedFile.Inode.Md5Checksum)
 			{
 				var output = new System.IO.StreamWriter(e.UnifiedFile.Inode.FullName);
 				var download = DriveService.Files.Get(e.UnifiedFile.File.Id);
@@ -933,7 +929,30 @@ namespace FSync
 		void ExecuteDriveCreatedEvent(DriveCreatedEventArgs e)
 		{
 			Console.WriteLine("Executing Drive Created Event");
+			FileSystemInfo fileSystemInfo;
 
+			if (!e.UnifiedFile.Inode.Exists)
+				return;
+
+			if (e.UnifiedFile.IsDirectory)
+			{
+				var path = BuildLocalPath(e.UnifiedFile.Path);
+				fileSystemInfo = System.IO.Directory.CreateDirectory(path);
+			}
+			else if (e.UnifiedFile.IsFile)
+			{
+				var path = BuildLocalPath(e.UnifiedFile.Path);
+				Console.WriteLine(path);
+				using (System.IO.File.Create(path))
+				{ }
+				fileSystemInfo = new FileInfo(path);
+			}
+			else
+			{
+				throw new ApplicationException("");
+			}
+
+			e.UnifiedFile.Inode = new FileSystemInode(fileSystemInfo);
 		}
 
 		void ExecuteDriveDeletedEvent(DriveDeletedEventArgs e)
@@ -948,6 +967,15 @@ namespace FSync
 
 		void ExecuteFileChangedEvent(FileChangedEventArgs e)
 		{
+			Console.WriteLine(e.UnifiedFile);
+			Console.WriteLine(e.UnifiedFile.Path);
+			Console.WriteLine(e.UnifiedFile.Inode);
+			if (!e.UnifiedFile.Inode.Exists)
+				return;
+
+			if (e.UnifiedFile.Inode.Md5Checksum == e.UnifiedFile.File.Md5Checksum)
+				return;
+			
 			Console.WriteLine("Executing File Changed event");
 			var gfile = new Google.Apis.Drive.v3.Data.File();
 			gfile.ModifiedTime = e.UnifiedFile.Inode.ModifiedTime;
@@ -969,6 +997,9 @@ namespace FSync
 
 		void ExecuteFileCreatedEvent(FileCreatedEventArgs e)
 		{
+			if (!e.UnifiedFile.Inode.Exists)
+				return;
+			
 			Console.WriteLine("Executing File created event");
 			var gfile = new Google.Apis.Drive.v3.Data.File();
 			var parent = PathMap[System.IO.Path.GetDirectoryName(e.UnifiedFile.Path)];
@@ -991,7 +1022,8 @@ namespace FSync
 		void ExecuteFileDeletedEvent(FileDeletedEventArgs e)
 		{
 			Console.WriteLine("Executing File Deleted Event");
-
+			if (e.UnifiedFile.File == null)
+				return;
 			DriveService.Files.Delete(e.UnifiedFile.File.Id).Execute();
 			PathMap.Remove(e.UnifiedFile.Path);
 		}
@@ -1063,7 +1095,7 @@ namespace FSync
 			FileSystemWatcher watcher = new FileSystemWatcher();
 			watcher.Path = Root.Inode.FullName;
 			watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
-			watcher.Filter = "*";
+			watcher.Filter = "";
 
 			watcher.Changed += new FileSystemEventHandler(OnChanged);
 			watcher.Created += new FileSystemEventHandler(OnChanged);
@@ -1085,18 +1117,31 @@ namespace FSync
 					switch (e.ChangeType)
 					{
 						case WatcherChangeTypes.Changed:
+							if (!System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
 							syncEvent = new FileChangedEventArgs(unifiedFile);
 							break;
 						case WatcherChangeTypes.Created:
+							if (!System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
 							syncEvent = new FileCreatedEventArgs(unifiedFile);
 							break;
 						case WatcherChangeTypes.Deleted:
+							if (System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
 							syncEvent = new FileDeletedEventArgs(unifiedFile);
 							break;
 						default:
 							throw new Exception("unhandled ChangeType");
 					}
-					SyncQueue.Enqueue(syncEvent);
+					if (syncEvent != null)
+						SyncQueue.Enqueue(syncEvent);
 				}
 				catch (Exception ex)
 				{
@@ -1110,7 +1155,7 @@ namespace FSync
 			lock(SyncQueue)
 			{
 				Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
-				SyncQueue.Enqueue(new FileRenamedEventArgs(e.OldFullPath, new FileSystemInode(e.FullPath)));
+				SyncQueue.Enqueue(new FileRenamedEventArgs(e.OldFullPath, GetUnifiedFile(e.FullPath)));
 			}
 		}			
 	}
