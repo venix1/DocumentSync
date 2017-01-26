@@ -1094,7 +1094,8 @@ namespace FSync
 
 			FileSystemWatcher watcher = new FileSystemWatcher();
 			watcher.Path = Root.Inode.FullName;
-			watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+
+			watcher.NotifyFilter = System.IO.NotifyFilters.LastWrite | System.IO.NotifyFilters.FileName | System.IO.NotifyFilters.DirectoryName;
 			watcher.Filter = "";
 
 			watcher.Changed += new FileSystemEventHandler(OnChanged);
