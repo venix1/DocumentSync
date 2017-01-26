@@ -3,26 +3,57 @@ using System.IO;
 
 namespace FSync
 {
+	public class DocumentException : Exception {
+	}
+
+	public class DocumentDoesNotExistException : Exception
+	{
+	}
+
+	public enum DocumentType
+	{
+		File,
+		Directory,
+		Link,
+	}
 	
 	public interface IDocument
 	{
-		string ID { get; }
+		string Id { get; }
 		string Name { get; }
+		string FullName { get; }
 
-		IDocumentStore Parent { get; }
+		IDocument Parent { get; }
 		bool Exists { get; }
 		bool IsDirectory { get; }
 		bool IsFile { get; }
+
+		System.Collections.IEnumerable Children { get; }
 
 		string Md5Checksum { get; }
 	}
 
 	public interface IDocumentStore
 	{
-		IDocument Create();
+		/*
+		 * One line function bulk. 
+		IDocument CreateFile(string path);
+		IDocument CreateFile(IDocument parent, string name);
+
+		IDocument CreateDirectory(string path);
+		IDocument CreateDirectory(IDocument parent, string name);
+		*/
+
+		IDocument Create(string path, DocumentType type);
+		IDocument Create(IDocument parent, string name, DocumentType type);
+
 		void Delete(IDocument arg0);
 		void MoveTo(IDocument src, IDocument dst);
 		void MoveTo(IDocument src, string name);
+
+		IDocument GetById(string id);
+		IDocument GetByPath(string path);
+
 	}
 
 	public enum DocumentChangeType
