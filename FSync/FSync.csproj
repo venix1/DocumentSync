@@ -74,5 +74,8 @@
     <None Include="Design.md" />
     <None Include="TODO.md" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="client_secret.json" />
+  </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>
