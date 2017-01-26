@@ -141,7 +141,8 @@ namespace FSync
 			}
 			// Update Parent
 		}
-		public void MoveTo(IDocument src, string name) { throw new Exception("stub"); 
+		public void MoveTo(IDocument src, string name) {
+			throw new Exception("stub");
 			// Parse name as path
 			// Does exist?
 			// Is File?
