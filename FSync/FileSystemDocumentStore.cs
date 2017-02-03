@@ -22,7 +22,8 @@ namespace FSync
 		public string Id { get { return Document.FullName; } }
 		public string Name { get { return Document.Name; } }
 		public string FullName { get { return Document.FullName; } }
-
+		public DateTime CreatedTime { get { return Document.CreationTime; }}
+		public DateTime ModifiedTime { get { return Document.LastWriteTime; } }
 		public IDocument Parent { get { throw new Exception("stub"); } }
 		public bool Exists {
 			get { throw new Exception("stub"); }
@@ -126,11 +127,16 @@ namespace FSync
 
 			return new FileSystemDocument(this, fi);
 		}
+
+		public DocumentWatcher Watch()
+		{
+			return new FileSystemDocumentWatcher();
+		}
 	}
 
 	public class FileSystemDocumentWatcher : DocumentWatcher
 	{
-		public FileSystemDocumentWatcher()
+		internal FileSystemDocumentWatcher()
 		{
 			/*
 			var timer = new System.Timers.Timer(5000);
