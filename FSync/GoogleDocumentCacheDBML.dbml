@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Database xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Name="main" Class="GoogleDocumentCache" Provider="Sqlite" xmlns="http://schemas.microsoft.com/linqtosql/dbml/2007">
+  <Table Name="" Member="DocumentIndex">
+    <Type Name="GoogleDocumentIndex">
+      <Column Member="Id" Type="System.String" IsPrimaryKey="true" CanBeNull="false" />
+      <Column Member="Parent" Type="System.String" CanBeNull="true" />
+      <Column Member="Name" Type="System.String" CanBeNull="false" />
+      <Column Member="Version" Type="System.String" CanBeNull="false" />
+    </Type>
+  </Table>
+</Database>
