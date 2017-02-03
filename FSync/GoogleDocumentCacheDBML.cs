@@ -5,7 +5,7 @@
 // | |_| | |_) | |  | |  __/ || (_| | |
 // |____/|_.__/|_|  |_|\___|\__\__,_|_|
 //
-// Auto-generated from main on 2017-02-03 13:45:15Z.
+// Auto-generated from main on 2017-02-03 16:33:32Z.
 // Please visit http://code.google.com/p/dblinq2007/ for more information.
 //
 namespace FSync
@@ -59,7 +59,7 @@ namespace FSync
 		}
 	}
 	
-	[Table(Name="")]
+	[Table(Name="GoogleDocumentIndex")]
 	public partial class GoogleDocumentIndex : System.ComponentModel.INotifyPropertyChanging, System.ComponentModel.INotifyPropertyChanged
 	{
 		
@@ -71,7 +71,7 @@ namespace FSync
 		
 		private string _Name;
 		
-		private string _Version;
+		private long _Version;
 		
 		#region Extensibility Method Declarations
 		partial void OnCreated();
@@ -90,7 +90,7 @@ namespace FSync
 		
 		partial void OnVersionChanged();
 		
-		partial void OnVersionChanging(string value);
+		partial void OnVersionChanging(long value);
 		#endregion
 		
 		
@@ -167,7 +167,7 @@ namespace FSync
 		
 		[Column(Storage="_Version", Name=null, DbType=null, AutoSync=AutoSync.Never, CanBeNull=false)]
 		[DebuggerNonUserCode()]
-		public string Version
+		public long Version
 		{
 			get
 			{
@@ -175,8 +175,7 @@ namespace FSync
 			}
 			set
 			{
-				if (((_Version == value) 
-							== false))
+				if ((_Version != value))
 				{
 					this.OnVersionChanging(value);
 					this.SendPropertyChanging();

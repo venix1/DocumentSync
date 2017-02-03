@@ -72,13 +72,11 @@
     <Compile Include="GoogleDocumentStore.cs" />
     <Compile Include="FileSystemDocumentStore.cs" />
     <Compile Include="GoogleDocumentCache.cs" />
-    <Compile Include="GoogleDocumentCacheDBML.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="Design.md" />
     <None Include="TODO.md" />
-    <None Include="GoogleDocumentCacheDBML.dbml" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="client_secret.json" />
