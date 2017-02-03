@@ -27,6 +27,11 @@ namespace FSync
 		public bool Exists {
 			get { throw new Exception("stub"); }
 		}
+		public bool Trashed {
+			get {
+				throw new Exception("stub");
+			}
+		}
 
 		public bool IsDirectory {
 			get {
