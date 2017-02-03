@@ -26,6 +26,9 @@ namespace FSync
 		public string Id { get { return Document.Id; } }
 		public string Name { get { return Document.Name; } }
 		public string FullName { get; private set; }
+		public DateTime CreatedTime { get { return Document.CreatedTime.GetValueOrDefault(DateTime.Now); } }
+		public DateTime ModifiedTime { get { return Document.ModifiedTime.GetValueOrDefault(DateTime.Now); } }
+
 
 		public IDocument Parent {
 			get {
@@ -39,17 +42,51 @@ namespace FSync
 			}
 		}
 
-		public bool Exists { get {return Owner.GetById(Document.Id) != null;} }
+		public bool Trashed { get { return Document.Trashed.GetValueOrDefault(false); } }
+		public bool Exists { get { return Owner.GetById(Document.Id) != null; } }
 		public bool IsDirectory { get { return Document.MimeType == Owner.DirectoryType; } }
 		public bool IsFile { get { return !IsDirectory; } }
 
 		public string Md5Checksum { get { return Document.Md5Checksum; } }
 
 		public System.Collections.IEnumerable Children {
-			get
-			{
+			get {
 				return Owner.GetContents(this);
 			}
+		}
+	}
+
+	public class GoogleDriveChangesEnumerable : IDocumentEnumerable
+	{
+		Queue<GoogleDriveDocument> Changes { get; set; }
+
+		GoogleDriveDocumentStore Owner { get; set; }
+		public string StartPageToken { get; internal set; }
+		public string SavedPageToken { get; internal set; }
+
+		internal GoogleDriveChangesEnumerable(GoogleDriveDocumentStore owner, string startPageToken)
+		{
+			Owner = owner;
+			StartPageToken = startPageToken;
+			SavedPageToken = StartPageToken;
+		}
+
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+		{
+			return GetEnumerator();
+		}
+
+		public IEnumerator<IDocument> GetEnumerator()
+		{
+			if (Changes.Count <= 0) {
+				var pageToken = StartPageToken;
+				foreach (var change in Owner.Changes(ref pageToken)) {
+					Changes.Enqueue(change);
+				}
+				StartPageToken = pageToken;
+			}
+
+			return Changes.GetEnumerator();
 		}
 	}
 
@@ -65,6 +102,7 @@ namespace FSync
 		DriveService DriveService;
 		string savedStartPageToken;
 
+		// Drive Id Cache
 
 		public GoogleDriveDocumentStore()
 		{
@@ -95,7 +133,8 @@ namespace FSync
 			//RootDocument = new GoogleDriveDocumentStor
 		}
 
-		public GoogleDriveDocumentStore(DriveService driveService) {
+		public GoogleDriveDocumentStore(DriveService driveService)
+		{
 			DriveService = driveService;
 		}
 
@@ -130,18 +169,21 @@ namespace FSync
 			return new GoogleDriveDocument(this, file);
 		}
 
-		public void Delete(IDocument arg0) {
+		public void Delete(IDocument arg0)
+		{
 			var deleteRequest = DriveService.Files.Delete(arg0.Id);
 			Console.WriteLine(deleteRequest.Execute());
 		}
-		public void MoveTo(IDocument src, IDocument dst) {
+		public void MoveTo(IDocument src, IDocument dst)
+		{
 			throw new Exception("stub");
 			if (dst.IsFile) {
 				// Overwrite
 			}
 			// Update Parent
 		}
-		public void MoveTo(IDocument src, string name) {
+		public void MoveTo(IDocument src, string name)
+		{
 			throw new Exception("stub");
 			// Parse name as path
 			// Does exist?
@@ -172,7 +214,8 @@ namespace FSync
 			} while (!String.IsNullOrEmpty(listRequest.PageToken));
 		}
 
-		public IDocument GetByPath(string path) {
+		public IDocument GetByPath(string path)
+		{
 			IDocument dir = GetById("root");
 			if (String.IsNullOrEmpty(path) || path == "/") {
 				return dir;
@@ -223,9 +266,24 @@ namespace FSync
 			return System.IO.Path.Combine(paths.ToArray());
 		}
 
-		public IEnumerable<IDocument> Changes(IDocument document)
+		public GoogleDriveChangesEnumerable GetChangeLog(string startPageToken = null)
 		{
-			string pageToken = savedStartPageToken;
+			string savedStartPageToken = startPageToken;
+
+			if (startPageToken == null) {
+				var response = DriveService.Changes.GetStartPageToken().Execute();
+				Console.WriteLine("Start token: " + response.StartPageTokenValue);
+				savedStartPageToken = response.StartPageTokenValue;
+			}
+
+			return new GoogleDriveChangesEnumerable(this, savedStartPageToken);
+		}
+
+
+		public List<GoogleDriveDocument> Changes(ref string pageToken)
+		{
+			var list = new List<GoogleDriveDocument>();
+			string newStartPageToken = null;
 			while (pageToken != null) {
 				var request = DriveService.Changes.List(pageToken);
 
@@ -235,49 +293,147 @@ namespace FSync
 
 				var changes = request.Execute();
 				foreach (var change in changes.Changes) {
-					yield return new GoogleDriveDocument(this, change.File);
-					/*
-						EventArgs syncEvent = null;
-
-						if (change.Removed.GetValueOrDefault(false) || change.File.Trashed.GetValueOrDefault(false)) {
-							Console.WriteLine("Removed: {0} {1}", change.FileId, change.File);
-							syncEvent = new DriveDeletedEventArgs(GetUnifiedFile(change.FileId));
-						} else {
-							UnifiedFile unifiedFile = GetUnifiedFileById(change.FileId);
-
-							if (unifiedFile == null)
-								syncEvent = new DriveCreatedEventArgs(unifiedFile);
-							else if (unifiedFile.File.Name != change.File.Name)
-								syncEvent = new DriveRenamedEventArgs(unifiedFile, GetUnifiedFile(change.File));
-							else
-								syncEvent = new DriveChangedEventArgs(unifiedFile);
-						}
-						Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
-						SyncQueue.Enqueue(syncEvent);
-					*/
+					list.Add(new GoogleDriveDocument(this, change.File));
 				}
-					if (changes.NewStartPageToken != null) {
+
+				if (changes.NewStartPageToken != null) {
 					Console.WriteLine("NewStartPageToken: {0}", changes.NewStartPageToken);
-					// Last page, save this token for the next polling interval
-					savedStartPageToken = changes.NewStartPageToken;
 				}
+
 				if (changes.NextPageToken != null) {
 					Console.WriteLine("NextPageToken: {0}", changes.NextPageToken);
 				}
+				newStartPageToken = changes.NewStartPageToken;
 				pageToken = changes.NextPageToken;
 			}
-		}
+			pageToken = newStartPageToken;
 
+			return list;
+		}
+		// Whatever is returned by this, should be recallable.
+		// Return Closure, to maintain StartPageToken
+		/*
+		public delegate  DocumentChangeLog();
+		public DocumentChangeLog Changes(string startPageToken)
+		{
+			return delegate () {
+				string pageToken = startPageToken;
+				while (pageToken != null) {
+					var request = DriveService.Changes.List(pageToken);
+
+					request.IncludeRemoved = true;
+					request.Fields = String.Format("changes(file({0}),newStartPageToken,nextPageToken", RequiredFields);
+					request.Spaces = "drive";
+
+					var changes = request.Execute();
+					foreach (var change in changes.Changes) {
+						yield return new GoogleDriveDocument(this, change.File);
+					}
+					if (changes.NewStartPageToken != null) {
+						Console.WriteLine("NewStartPageToken: {0}", changes.NewStartPageToken);
+						// Last page, save this token for the next polling interval
+						startPageToken = changes.NewStartPageToken;
+					}
+					if (changes.NextPageToken != null) {
+						Console.WriteLine("NextPageToken: {0}", changes.NextPageToken);
+					}
+					pageToken = changes.NextPageToken;
+				}
+				return null;
+			};
+		}
+		*/
+
+		GoogleDriveDocumentWatcher Watch()
+		{
+			return new GoogleDriveDocumentWatcher(this);
+		}
 	}
 
 	public class GoogleDriveDocumentWatcher : DocumentWatcher
 	{
-		private GoogleDriveDocumentStore Owner;
+		private DateTime begin;
+		private System.Threading.Thread PollThread { get; set; }
+		private GoogleDriveDocumentStore Owner { get; set; }
+
+		private GoogleDriveChangesEnumerable ChangeLog { get; set; }
+
+		internal GoogleDriveDocumentWatcher(GoogleDriveDocumentStore owner)
+		{
+			Owner = owner;
+			ChangeLog = Owner.GetChangeLog();
+
+			// Thread instead of Timer for precision
+			PollThread = new System.Threading.Thread(() => {
+				begin = DateTime.UtcNow;
+				Check();
+				System.Threading.Thread.Sleep((5000 - (DateTime.UtcNow - begin).Milliseconds));
+			});
+			PollThread.Start();
+		}
+
+		~GoogleDriveDocumentWatcher()
+		{
+			PollThread.Abort();
+		}
 
 		private void Check()
 		{
+			if (!EnableRaisingEvents)
+				return;
+			var events = new List<DocumentEventArgs>();
 
+			foreach (var change in ChangeLog) {
+				Console.WriteLine("{0} {1}", change.Id, change.FullName);
+				Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
+
+				// Note: Is event time required for classification?
+
+				// Deleted. Detected via Metdata.
+				if (!change.Exists || change.Trashed) {
+					//Console.WriteLine("Removed: {0} {1}", change.Id, change.FullName);
+					events.Add(new DocumentEventArgs(DocumentChangeType.Deleted, change));
+				} else {
+					if (change.CreatedTime == change.ModifiedTime)
+						events.Add(new DocumentEventArgs(DocumentChangeType.Created, change));
+					else
+						events.Add(new DocumentEventArgs(DocumentChangeType.Changed, change));
+					// This may require a cache.
+					// events.Add(new DocumentEventArgs(DocumentChangeType.Renamed, change));
+					/*
+						Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
+						SyncQueue.Enqueue(syncEvent);
+					*/
+				}
+
+				// Collapse Events
+
+				// Dispatch Events
+				foreach (var e in events) {
+					switch (e.ChangeType) {
+						case DocumentChangeType.Created:
+							if (Created != null) {
+								Created(this, e);
+							}
+							break;
+						case DocumentChangeType.Changed:
+							if (Changed != null) {
+								Changed(this, e);
+							}
+							break;
+						case DocumentChangeType.Deleted:
+							if (Deleted != null) {
+								Deleted(this, e);
+							}
+							break;
+						case DocumentChangeType.Renamed:
+							if (Renamed != null) {
+								Renamed(this, e);
+							}
+							break;
+					}
+				}
+			}
 		}
 	}
-}
-
+	}
