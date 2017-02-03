@@ -344,7 +344,7 @@ namespace FSync
 		}
 		*/
 
-		GoogleDriveDocumentWatcher Watch()
+		public DocumentWatcher Watch()
 		{
 			return new GoogleDriveDocumentWatcher(this);
 		}
