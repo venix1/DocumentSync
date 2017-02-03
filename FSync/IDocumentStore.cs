@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace FSync
@@ -22,15 +23,30 @@ namespace FSync
 		string Id { get; }
 		string Name { get; }
 		string FullName { get; }
+		DateTime CreatedTime { get; }
+		DateTime ModifiedTime { get; }
+
 
 		IDocument Parent { get; }
 		bool Exists { get; }
 		bool IsDirectory { get; }
 		bool IsFile { get; }
 
+
+
+		bool Trashed { get; }
+
 		System.Collections.IEnumerable Children { get; }
 
 		string Md5Checksum { get; }
+	}
+
+	public interface IDocumentEnumerable : IEnumerable<IDocument>
+	{
+	}
+
+	public interface IDocumentEnumerator : IEnumerator<IDocument>
+	{
 	}
 
 	public interface IDocumentStore
@@ -54,6 +70,7 @@ namespace FSync
 		IDocument GetById(string id);
 		IDocument GetByPath(string path);
 
+		DocumentWatcher Watch();
 	}
 
 	public enum DocumentChangeType
@@ -65,11 +82,17 @@ namespace FSync
 		Renamed
 	}
 
-	public abstract class DocumentEventArgs : EventArgs
+	public class DocumentEventArgs : EventArgs
 	{
-		DocumentChangeType ChangeType { get; }
-		IDocumentStore Target { get; }
-		IDocumentStore Original { get; }
+		public DocumentChangeType ChangeType { get; }
+		public IDocument Document { get; }
+		// public IDocument Original { get; }
+
+		public DocumentEventArgs(DocumentChangeType type, IDocument document)
+		{
+			ChangeType = type;
+			Document = document;
+		}
 	}
 
 	public delegate void DocumentEventHandler(
@@ -89,15 +112,18 @@ namespace FSync
 		Size
 	}
 
-	public abstract class DocumentWatcher
+	public abstract class DocumentWatcher // : System.ComponentModel.Component
 	{
-		IDocument Document { get; set; }
-		NotifyFilters NotifyFilter { get; set; }
-		string Filter { get; set;}
+		public bool EnableRaisingEvents { get; set; }
+		public bool IncludeSubdirectories { get; set; }
 
-		DocumentEventHandler Changed;
-		DocumentEventHandler Created;
-		DocumentEventHandler Deleted;
-		DocumentEventHandler Renamed;
+		public string Filter { get; set; }
+		public NotifyFilters NotifyFilter { get; set; }
+		public string Path { get; set; }
+
+		public DocumentEventHandler Changed;
+		public DocumentEventHandler Created;
+		public DocumentEventHandler Deleted;
+		public DocumentEventHandler Renamed;
 	}
 }
