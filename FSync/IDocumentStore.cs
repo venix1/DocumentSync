@@ -25,6 +25,9 @@ namespace FSync
 		string FullName { get; }
 		DateTime CreatedTime { get; }
 		DateTime ModifiedTime { get; }
+		long Version { get; }
+
+		bool Deleted { get; }
 
 
 		IDocument Parent { get; }
@@ -114,6 +117,8 @@ namespace FSync
 
 	public abstract class DocumentWatcher // : System.ComponentModel.Component
 	{
+		public abstract DocumentEventArgs Classify(IDocument change);
+
 		public bool EnableRaisingEvents { get; set; }
 		public bool IncludeSubdirectories { get; set; }
 
