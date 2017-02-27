@@ -1,35 +1,62 @@
 namespace FSync
 {
 	using System;
-	using System.ComponentModel;
 	using System.Data;
-	using System.Data.Linq;
-	using System.Data.Linq.Mapping;
-	using System.Diagnostics;
+	using System.Collections.Generic;
+	using System.Data.Common;
+	using System.Data.Entity;
+	using System.Linq;
+	using SQLite.CodeFirst;
 
 
-	public partial class GoogleDocumentCache
+	public class GoogleDocumentCache : DbContext
 	{
-		static readonly string INDEX_CREATE_TABLE = @"CREATE TABLE IF NOT EXISTS GoogleIndex ( -- ID Path mapping
-        	Id      TEXT PRIMARY KEY, -- Google Document Id
-            Parent  TEXT,             -- Google Document Id of Parent
-            Name    TEXT,             -- Name of Document
-            Version INTEGER           -- Current version
-        );";
+		public Dictionary<string, GoogleDriveDocument> Documents { get; protected set; }
+		public DbSet<GoogleDocumentIndex> DocumentIndex { get; set; }
 
-		partial void OnCreated()
-		{
-			// if (!DatabaseExists())
-			CreateDatabase();
+		public GoogleDocumentCache(string connectionString) : base(connectionString) {
+			Documents = new Dictionary<string, GoogleDriveDocument>();
+		}
+		public GoogleDocumentCache(DbConnection db) : base(db, true) {
+			Documents = new Dictionary<string, GoogleDriveDocument>();
 		}
 
-		new public void CreateDatabase()
+		protected override void OnModelCreating(DbModelBuilder modelBuilder)
 		{
-			ExecuteCommand(INDEX_CREATE_TABLE);
+			var sqliteConnectionInitializer = new SqliteCreateDatabaseIfNotExists<GoogleDocumentCache>(modelBuilder);
+			Database.SetInitializer(sqliteConnectionInitializer);
+		}
+
+		public void Add(IDocument document)
+		{
+			var index = new GoogleDocumentIndex {
+				Id = document.Id,
+				Parent = document.Parent.Id,
+				Name = document.Name,
+				Version = document.Version
+			};
+			if (DocumentIndex.Any(i => i.Id == document.Id)) {
+				DocumentIndex.Attach(index);
+				Entry(index).State = EntityState.Modified;
+			} else {
+				DocumentIndex.Add(index);
+			}
+
+			//Documents.Add(document.Id, document);
+			SaveChanges();
+		}
+
+		public bool ContainsDocument(string id)
+		{
+			return Documents.ContainsKey(id);
 		}
 	}
 
-	public partial class GoogleDocumentIndex
+	public class GoogleDocumentIndex
 	{
+		public string Id { get; set; }
+		public string Parent { get; set; }
+		public string Name { get; set; }
+		public long Version { get; set; }
 	}
 }
