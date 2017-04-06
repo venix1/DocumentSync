@@ -28,21 +28,22 @@ namespace FSync
 		}
 
 		public void Add(IDocument document)
-		{
-			var index = new GoogleDocumentIndex {
-				Id = document.Id,
-				Parent = document.Parent.Id,
-				Name = document.Name,
-				Version = document.Version
-			};
-			if (DocumentIndex.Any(i => i.Id == document.Id)) {
-				DocumentIndex.Attach(index);
-				Entry(index).State = EntityState.Modified;
-			} else {
+ 		{
+			GoogleDocumentIndex index;
+
+			index = DocumentIndex.SingleOrDefault(i => i.Id == document.Id);
+
+			if (index == null) {
+				index = new GoogleDocumentIndex();
 				DocumentIndex.Add(index);
+				Documents.Add(document.Id, (GoogleDriveDocument)document);
 			}
 
-			//Documents.Add(document.Id, document);
+			index.Id = document.Id;
+			index.Parent = document.Parent.Id;
+			index.Name = document.Name;
+			index.Version = document.Version;
+
 			SaveChanges();
 		}
 
