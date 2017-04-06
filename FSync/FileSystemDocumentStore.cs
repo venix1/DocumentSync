@@ -24,15 +24,11 @@ namespace FSync
 		public string FullName { get { return Document.FullName; } }
 		public DateTime CreatedTime { get { return Document.CreationTime; }}
 		public DateTime ModifiedTime { get { return Document.LastWriteTime; } }
-		public IDocument Parent { get { throw new Exception("stub"); } }
-		public bool Exists {
-			get { throw new Exception("stub"); }
-		}
-		public bool Trashed {
-			get {
-				throw new Exception("stub");
-			}
-		}
+		public IDocument Parent { get { throw new NotImplementedException(); } }
+		public long Version { get { throw new NotImplementedException(); } }
+		public bool Deleted { get { throw new NotImplementedException(); } }
+		public bool Exists { get { throw new NotImplementedException(); } }
+		public bool Trashed { get { throw new NotImplementedException(); } }
 
 		public bool IsDirectory {
 			get {
@@ -53,6 +49,15 @@ namespace FSync
 		public string Md5Checksum {
 				get { throw new Exception("stub"); }
 			}
+
+		public void Update(System.IO.Stream stream)
+		{
+			throw new NotImplementedException("File Modifications not implemented");
+		}
+		public void Delete()
+		{
+			throw new NotImplementedException("File Modifications not implemented");
+		}
 	}
 
 	public class FileSystemDocumentStore : IDocumentStore
@@ -156,6 +161,11 @@ namespace FSync
 
 			watcher.EnableRaisingEvents = true;
 			*/
+		}
+
+		public override DocumentEventArgs Classify(IDocument change)
+		{
+			throw new NotImplementedException();
 		}
 	}
 }
