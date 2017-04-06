@@ -7,6 +7,8 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
 
+using System.Linq;
+
 namespace FSync.Test
 {
 	public class TestGoogleDocumentStore
@@ -97,6 +99,103 @@ namespace FSync.Test
 		[Test]
 		public void GetByID()
 		{
+			IDocument document;
+			document = DocumentStore.GetById(Root.Id);
+			Assert.IsNotNull(document, "Unable to get Root Folder");
+
+			Assert.DoesNotThrow(delegate {
+				Assert.IsNull(DocumentStore.GetById("notfound"));
+			});
+		}
+
+		[Test]
+		public void TestEventClassification()
+		{
+			DocumentChangeType eventType = DocumentChangeType.Changed;
+			var watcher = DocumentStore.Watch();
+
+			var changelog = DocumentStore.GetChangeLog();
+
+			var doc = DocumentStore.Create(System.IO.Path.Combine("/", TmpFolder, "FileA"), DocumentType.File);
+
+			foreach (var change in changelog) {
+				var e = watcher.Classify(change);
+				Console.WriteLine(e.ChangeType);
+				eventType = e.ChangeType;
+			}
+			Assert.AreEqual(DocumentChangeType.Created, eventType);
+
+			var stream = new MemoryStream(System.Text.Encoding.ASCII.GetBytes("Hello World"));
+			doc.Update(stream);
+
+			foreach (var change in changelog) {
+				var e = watcher.Classify(change);
+				Console.WriteLine(e.ChangeType);
+				eventType = e.ChangeType;
+			}
+			Assert.AreEqual(DocumentChangeType.Changed, eventType);
+
+			doc.Delete();
+			foreach (var change in changelog) {
+				var e = watcher.Classify(change);
+				Console.WriteLine(e.ChangeType);
+				eventType = e.ChangeType;
+			}
+			Assert.AreEqual(DocumentChangeType.Deleted, eventType);
+
+
+			/*
+			throw new NotImplementedException("Rename Events not implemented");
+			foreach (var change in changelog) {
+				var e = watcher.Classify(change);
+				Console.WriteLine(e.ChangeType);
+				Assert.AreEqual(DocumentChangeType.Deleted, e.ChangeType);
+			}
+			*/
+		}
+
+		[Test]
+		public void TestDocumentCache()
+		{
+			var dbname = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+			try {
+				Console.WriteLine("DB: {0}", dbname);
+				using (var db = new System.Data.SQLite.SQLiteConnection("Data Source=" + dbname)) {
+					// Test EntityFramework
+					var cache = new GoogleDocumentCache(db);
+					var index = new GoogleDocumentIndex { Id = "a", Parent = "b", Name = "c", Version = 4 };
+					cache.DocumentIndex.Add(index);
+					cache.SaveChanges();
+
+					var index2 = (from i in cache.DocumentIndex select i).First();
+					Assert.AreEqual(index, index2);
+					index.Version = 5;
+					cache.SaveChanges();
+
+					// test cache object
+					var document = DocumentStore.Create(Root, "test", DocumentType.File);
+
+					cache.Add(document);
+				}
+
+
+			} finally {
+				//System.IO.File.Delete(dbname);
+			}
+		}
+
+		[Test]
+		public void DriveWatcher()
+		{
+			var root = DocumentStore.GetByPath(TmpFolder);
+
+			var watcher = DocumentStore.Watch();
+			watcher.Path = root.Id;
+			//watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
+			watcher.Filter = "*";
+
+			watcher.EnableRaisingEvents = true;
+
 			throw new Exception("stub");
 		}
 	}
