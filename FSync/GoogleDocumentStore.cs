@@ -5,6 +5,7 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
+using Mono.Data.Sqlite;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
@@ -13,7 +14,7 @@ namespace FSync
 	public class GoogleDriveDocument : IDocument
 	{
 		GoogleDriveDocumentStore Owner;
-		DriveFile Document;
+		internal DriveFile Document { get; set; }
 
 		internal GoogleDriveDocument(GoogleDriveDocumentStore owner, DriveFile document)
 		{
@@ -28,7 +29,8 @@ namespace FSync
 		public string FullName { get; private set; }
 		public DateTime CreatedTime { get { return Document.CreatedTime.GetValueOrDefault(DateTime.Now); } }
 		public DateTime ModifiedTime { get { return Document.ModifiedTime.GetValueOrDefault(DateTime.Now); } }
-
+		public long Version { get { return Document.Version.GetValueOrDefault(); } }
+		public bool Deleted { get; internal set; }
 
 		public IDocument Parent {
 			get {
@@ -54,6 +56,16 @@ namespace FSync
 				return Owner.GetContents(this);
 			}
 		}
+
+		public void Update(System.IO.Stream stream)
+		{
+			Owner.Update(this, stream);
+		}
+
+		public void Delete()
+		{
+			Owner.Delete(this);
+		}
 	}
 
 	public class GoogleDriveChangesEnumerable : IDocumentEnumerable
@@ -69,6 +81,7 @@ namespace FSync
 			Owner = owner;
 			StartPageToken = startPageToken;
 			SavedPageToken = StartPageToken;
+			Changes = new Queue<GoogleDriveDocument>();
 		}
 
 		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
@@ -86,7 +99,10 @@ namespace FSync
 				StartPageToken = pageToken;
 			}
 
-			return Changes.GetEnumerator();
+			var changes = Changes;
+			Changes = new Queue<GoogleDriveDocument>();
+
+			return changes.GetEnumerator();
 		}
 	}
 
@@ -94,24 +110,31 @@ namespace FSync
 	{
 		static string[] Scopes = { DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadata };
 		static string ApplicationName = "DocumentSync - Google Drive Plugin";
+		static string ApplicationPath;
 
 		public readonly string DirectoryType = "application/vnd.google-apps.folder";
-		public readonly string RequiredFields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+		public readonly string RequiredFields = "createdTime, id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
 
 		UserCredential credential;
 		DriveService DriveService;
 		string savedStartPageToken;
 
+		GoogleDriveDocumentWatcher ChangeThread { get; set; }
+		public GoogleDocumentCache Cache { get; private set; }
 		// Drive Id Cache
 
 		public GoogleDriveDocumentStore()
 		{
+			ApplicationPath = Path.Combine(
+				System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+				System.Reflection.Assembly.GetExecutingAssembly().GetName().Name
+			);
+			Console.WriteLine("Application Path: {0}", ApplicationPath);
+
 			// Authenticate
 			using (var stream =
 				   System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("FSync.client_secret.json")) {
-				string credPath = System.Environment.GetFolderPath(
-					System.Environment.SpecialFolder.Personal);
-				credPath = Path.Combine(credPath, ".credentials/drive-dotnet-sync.json");
+				var credPath = Path.Combine(ApplicationPath, ".credentials/drive-dotnet-sync.json");
 
 				credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
 					GoogleClientSecrets.Load(stream).Secrets,
@@ -127,6 +150,14 @@ namespace FSync
 				ApplicationName = ApplicationName,
 			});
 
+			// TODO: Encapsulate into Wrapper Class.
+			// TODO: GoogleDocumentCache should interface with SQLite class and not expose it.
+			var dbname = System.IO.Path.Combine(ApplicationPath, "dsync.db");
+			var db = new System.Data.SQLite.SQLiteConnection("Data Source=" + dbname);
+			Cache = new GoogleDocumentCache(db);
+
+			ChangeThread = new GoogleDriveDocumentWatcher(this);
+			ChangeThread.EnableRaisingEvents = true;
 			// var root = new DriveFile();
 			// root.Id = "";
 			// root.Name = "/";
@@ -136,6 +167,13 @@ namespace FSync
 		public GoogleDriveDocumentStore(DriveService driveService)
 		{
 			DriveService = driveService;
+		}
+
+		protected GoogleDriveDocument EncapsulateDocument(DriveFile file)
+		{
+			// Update Cache
+			// Update Index
+			return new GoogleDriveDocument(this, file);
 		}
 
 		public IDocument Create(string path, DocumentType type)
@@ -169,11 +207,24 @@ namespace FSync
 			return new GoogleDriveDocument(this, file);
 		}
 
+		public void Update(IDocument document, Stream stream)
+		{
+			var updateRequest = DriveService.Files.Update(null, document.Id, stream, "");
+			updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
+			updateRequest.Upload();
+			if (updateRequest.GetProgress().Status != Google.Apis.Upload.UploadStatus.Completed)
+				throw updateRequest.GetProgress().Exception;
+
+			// TODO: Update DriveFile Cache
+			// Return new Document;
+		}
+
 		public void Delete(IDocument arg0)
 		{
 			var deleteRequest = DriveService.Files.Delete(arg0.Id);
 			Console.WriteLine(deleteRequest.Execute());
 		}
+
 		public void MoveTo(IDocument src, IDocument dst)
 		{
 			throw new Exception("stub");
@@ -193,9 +244,22 @@ namespace FSync
 
 		public IDocument GetById(string id)
 		{
-			var resource = DriveService.Files.Get(id);
-			resource.Fields = RequiredFields;
-			return new GoogleDriveDocument(this, resource.Execute());
+			// Check Cache First
+			GoogleDriveDocument document;
+			Cache.Documents.TryGetValue(id, out document);
+			if (document == null) {
+				var resource = DriveService.Files.Get(id);
+				resource.Fields = RequiredFields;
+
+				try {
+					document = EncapsulateDocument(resource.Execute());
+				} catch (Google.GoogleApiException e) {
+					if (e.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+						return null;
+				}
+			}
+
+			return document;
 		}
 
 		public IEnumerable<IDocument> GetContents(IDocument document)
@@ -285,15 +349,32 @@ namespace FSync
 			var list = new List<GoogleDriveDocument>();
 			string newStartPageToken = null;
 			while (pageToken != null) {
+				Console.WriteLine("PageToken: {0}", pageToken);
 				var request = DriveService.Changes.List(pageToken);
 
 				request.IncludeRemoved = true;
-				request.Fields = String.Format("changes(file({0}),newStartPageToken,nextPageToken", RequiredFields);
+				request.Fields = String.Format("changes(fileId,kind,removed,time,file({0})),newStartPageToken,nextPageToken", RequiredFields);
 				request.Spaces = "drive";
 
 				var changes = request.Execute();
 				foreach (var change in changes.Changes) {
-					list.Add(new GoogleDriveDocument(this, change.File));
+					// TODO: Special Handling of Delete event
+					Console.WriteLine("Change: {0} {1} {2}", change.FileId, change.Removed, change.TimeRaw);
+					GoogleDriveDocument document;
+					if (change.Removed.Value) {
+						Cache.Documents.TryGetValue(change.FileId, out document);
+						Cache.Documents.Remove(change.FileId);
+						if (document == null) {
+							var file = new DriveFile {
+								Id = change.FileId
+							};
+							document = new GoogleDriveDocument(this, file);
+						}
+					} else {
+						document = new GoogleDriveDocument(this, change.File);
+						Cache.Add(document);
+					}
+					list.Add(document);
 				}
 
 				if (changes.NewStartPageToken != null) {
@@ -307,6 +388,7 @@ namespace FSync
 				pageToken = changes.NextPageToken;
 			}
 			pageToken = newStartPageToken;
+			Console.WriteLine("StartPageToken: {0}", pageToken);
 
 			return list;
 		}
@@ -377,36 +459,41 @@ namespace FSync
 			PollThread.Abort();
 		}
 
+		public override DocumentEventArgs Classify(IDocument change)
+		{
+			Console.WriteLine("{0} {1}", change.Id, change.FullName);
+			Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
+
+			// Note: Is event time required for classification?
+
+			// Deleted. Detected via Metdata.
+			if (!change.Exists || change.Trashed) {
+				//Console.WriteLine("Removed: {0} {1}", change.Id, change.FullName);
+				return new DocumentEventArgs(DocumentChangeType.Deleted, change);
+			} else {
+				if (change.CreatedTime >= change.ModifiedTime)
+					return new DocumentEventArgs(DocumentChangeType.Created, change);
+				else
+					return new DocumentEventArgs(DocumentChangeType.Changed, change);
+				// This may require a cache.
+				// events.Add(new DocumentEventArgs(DocumentChangeType.Renamed, change));
+				/*
+					Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
+					SyncQueue.Enqueue(syncEvent);
+				*/
+			}
+		}
+
 		private void Check()
 		{
-			if (!EnableRaisingEvents)
-				return;
 			var events = new List<DocumentEventArgs>();
 
 			foreach (var change in ChangeLog) {
-				Console.WriteLine("{0} {1}", change.Id, change.FullName);
-				Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
-
-				// Note: Is event time required for classification?
-
-				// Deleted. Detected via Metdata.
-				if (!change.Exists || change.Trashed) {
-					//Console.WriteLine("Removed: {0} {1}", change.Id, change.FullName);
-					events.Add(new DocumentEventArgs(DocumentChangeType.Deleted, change));
-				} else {
-					if (change.CreatedTime == change.ModifiedTime)
-						events.Add(new DocumentEventArgs(DocumentChangeType.Created, change));
-					else
-						events.Add(new DocumentEventArgs(DocumentChangeType.Changed, change));
-					// This may require a cache.
-					// events.Add(new DocumentEventArgs(DocumentChangeType.Renamed, change));
-					/*
-						Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
-						SyncQueue.Enqueue(syncEvent);
-					*/
-				}
+				events.Add(Classify(change));
 
 				// Collapse Events
+				if (!EnableRaisingEvents)
+					return;
 
 				// Dispatch Events
 				foreach (var e in events) {
