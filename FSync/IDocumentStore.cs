@@ -42,6 +42,10 @@ namespace FSync
 		System.Collections.IEnumerable Children { get; }
 
 		string Md5Checksum { get; }
+
+		// Operations
+		void Update(System.IO.Stream stream);
+		void Delete();
 	}
 
 	public interface IDocumentEnumerable : IEnumerable<IDocument>
