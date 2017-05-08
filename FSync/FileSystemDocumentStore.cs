@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace FSync
@@ -62,8 +63,9 @@ namespace FSync
 
 	public class FileSystemDocumentStore : IDocumentStore
 	{
-		public FileSystemDocumentStore()
+		public FileSystemDocumentStore(string root)
 		{
+			throw new Exception("Unable to find root folder");
 		}
 
 		public IDocument Create(string path, DocumentType type)
@@ -141,6 +143,8 @@ namespace FSync
 
 	public class FileSystemDocumentWatcher : DocumentWatcher
 	{
+		Queue<EventArgs> SyncQueue { get; set; }
+
 		internal FileSystemDocumentWatcher()
 		{
 			/*
@@ -166,6 +170,57 @@ namespace FSync
 		public override DocumentEventArgs Classify(IDocument change)
 		{
 			throw new NotImplementedException();
+		}
+		private void OnChanged(object source, FileSystemEventArgs e)
+		{
+			lock (SyncQueue) {
+				/*
+				try {
+					Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
+					EventArgs syncEvent = null;
+					UnifiedFile unifiedFile = GetUnifiedFile(e.FullPath);
+					switch (e.ChangeType) {
+						case WatcherChangeTypes.Changed:
+							if (!System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
+							syncEvent = new FileChangedEventArgs(unifiedFile);
+							break;
+						case WatcherChangeTypes.Created:
+							if (!System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
+							syncEvent = new FileCreatedEventArgs(unifiedFile);
+							break;
+						case WatcherChangeTypes.Deleted:
+							if (System.IO.File.Exists(e.FullPath)) {
+								Console.WriteLine("Out of Order event, Discarding");
+								break;
+							}
+							syncEvent = new FileDeletedEventArgs(unifiedFile);
+							break;
+						default:
+							throw new Exception("unhandled ChangeType");
+					}
+					if (syncEvent != null)
+						SyncQueue.Enqueue(syncEvent);
+				} catch (Exception ex) {
+					Console.WriteLine(ex);
+				}
+				*/
+			}
+		}
+
+		private void OnRenamed(object source, RenamedEventArgs e)
+		{
+			/*
+			lock (SyncQueue) {
+				Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
+				SyncQueue.Enqueue(new FileRenamedEventArgs(e.OldFullPath, GetUnifiedFile(e.FullPath)));
+			}
+			*/
 		}
 	}
 }
