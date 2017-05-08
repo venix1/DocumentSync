@@ -46,8 +46,8 @@ namespace FSync.Test
 			mockStartTokenRequest.Setup(x => x.Execute()).Returns(mockStartToken.Object);
 			mockStartToken.Setup(x => x.StartPageTokenValue).Returns("1");
 			// DriveService.Changes.GetStartPageToken().Execute();
-			var unifiedFileSystem = new UnifiedFileSystem(mockDriveService.Object, DriveRoot, FileRoot);
-			unifiedFileSystem.GetDriveFileInfo("0b01");
+			//var unifiedFileSystem = new UnifiedFileSystem(mockDriveService.Object, DriveRoot, FileRoot);
+			//unifiedFileSystem.GetDriveFileInfo("0b01");
 			// Google.Apis.Drive.v3.Data.File GetDriveFileInfo(string id)
 		}
 		public void GetDriveFileParent_() { 
