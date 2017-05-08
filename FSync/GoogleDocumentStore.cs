@@ -119,11 +119,35 @@ namespace FSync
 		DriveService DriveService;
 		string savedStartPageToken;
 
+		GoogleDriveDocument Root;
 		GoogleDriveDocumentWatcher ChangeThread { get; set; }
 		public GoogleDocumentCache Cache { get; private set; }
 		// Drive Id Cache
 
-		public GoogleDriveDocumentStore()
+		private void Initialize(DriveService driveService, String rootFolder)
+		{
+			DriveService = driveService;
+
+			// TODO: Encapsulate into Wrapper Class.
+			// TODO: GoogleDocumentCache should interface with SQLite class and not expose it.
+			var dbname = System.IO.Path.Combine(ApplicationPath, "dsync.db");
+			var db = new System.Data.SQLite.SQLiteConnection("Data Source=" + dbname);
+			Cache = new GoogleDocumentCache(db);
+
+			ChangeThread = new GoogleDriveDocumentWatcher(this);
+			ChangeThread.EnableRaisingEvents = true;
+
+			var root = GetById(rootFolder);
+			if (root == null)
+				root = GetByPath(rootFolder);
+
+			if (root == null)
+				throw new Exception("Unable to get root Folder");
+
+			Root = (GoogleDriveDocument) root;
+		}
+
+		public GoogleDriveDocumentStore(String rootFolder)
 		{
 			ApplicationPath = Path.Combine(
 				System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
@@ -145,28 +169,17 @@ namespace FSync
 				Console.WriteLine("Credential file saved to: " + credPath);
 			}
 
-			DriveService = new DriveService(new Google.Apis.Services.BaseClientService.Initializer() {
+			var driveService = new DriveService(new Google.Apis.Services.BaseClientService.Initializer() {
 				HttpClientInitializer = credential,
 				ApplicationName = ApplicationName,
 			});
 
-			// TODO: Encapsulate into Wrapper Class.
-			// TODO: GoogleDocumentCache should interface with SQLite class and not expose it.
-			var dbname = System.IO.Path.Combine(ApplicationPath, "dsync.db");
-			var db = new System.Data.SQLite.SQLiteConnection("Data Source=" + dbname);
-			Cache = new GoogleDocumentCache(db);
-
-			ChangeThread = new GoogleDriveDocumentWatcher(this);
-			ChangeThread.EnableRaisingEvents = true;
-			// var root = new DriveFile();
-			// root.Id = "";
-			// root.Name = "/";
-			//RootDocument = new GoogleDriveDocumentStor
+			Initialize(driveService, rootFolder);
 		}
 
-		public GoogleDriveDocumentStore(DriveService driveService)
+		public GoogleDriveDocumentStore(DriveService driveService, String rootFolder)
 		{
-			DriveService = driveService;
+			Initialize(driveService, rootFolder);
 		}
 
 		protected GoogleDriveDocument EncapsulateDocument(DriveFile file)
