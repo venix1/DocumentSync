@@ -1,14 +1,30 @@
-﻿* Folder Hiearchy
+﻿Phase One
+ * Read all local files.
+   * FindFiles
+ * Read all drive files.
+   * ScanDrive
+ * Ensure files are synchronized
+   * Converge
+   * SynchronizeFile
+
+ Phase Two (Watch)
+  * Identify and Mark Drive Change
+  * Identify and Mark File change
+  * Process Queue.
+
+* Folder Hiearchy
 * Map Drive to Disk
 * Sync Queue
 
 1. Create UnifiedFile for all Drive files
 2. Create UnifiedFile for all Disk files
+
 ? File storage
   * Dump structure to disk
   ? Map path to UnifiedFile
 ? File indexing
   ? path/id/inode lookups
+
 3. Iterate over all UnifiedFiles to synchronize
 4. Watch for disk changes
 5. Watch for drive changes.
