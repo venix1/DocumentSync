@@ -18,7 +18,7 @@ namespace FSync.Test
 
 		public TestFileSystemDocumentStore()
 		{
-			DocumentStore = new FileSystemDocumentStore();
+			DocumentStore = new FileSystemDocumentStore("/");
 		}
 
 		[SetUp]
