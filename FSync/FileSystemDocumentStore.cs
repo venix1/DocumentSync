@@ -133,11 +133,26 @@ namespace FSync
 				throw new Exception("File does not exist.");
 
 			return new FileSystemDocument(this, fi);
-		}
+		} 
 
 		public DocumentWatcher Watch()
 		{
 			return new FileSystemDocumentWatcher();
+		}
+
+		public IEnumerable<IDocument> GetContents(IDocument document)
+		{
+			throw new NotImplementedException();
+		}
+
+		public IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options)
+		{
+			throw new NotImplementedException();
+		}
+
+		public IEnumerable<IDocument> List()
+		{
+			throw new NotImplementedException();
 		}
 	}
 

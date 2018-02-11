@@ -13,14 +13,13 @@ namespace FSync.Test
 {
 	public class TestGoogleDocumentStore
 	{
-		Moq.Mock<DriveService> mockDriveService;
 		IDocument Root;
 		string TmpFolder;
 		GoogleDriveDocumentStore DocumentStore;
 
 		public TestGoogleDocumentStore()
 		{
-			DocumentStore = new GoogleDriveDocumentStore();
+			DocumentStore = new GoogleDriveDocumentStore("fsync-unittest");
 		}
 
 		[SetUp]
@@ -182,6 +181,11 @@ namespace FSync.Test
 			} finally {
 				//System.IO.File.Delete(dbname);
 			}
+		}
+
+		[Test]
+		public void TestDriveList()
+		{
 		}
 
 		[Test]
