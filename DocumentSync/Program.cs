@@ -11,6 +11,8 @@ namespace DocumentSync
 				return;
 			}
 
+			// TODO: Replace manual creation with factory method and arguments
+
 			var driveStore = new GoogleDriveDocumentStore(args[0]);
 			var fileStore = new FileSystemDocumentStore(args[1]);
 			var program = new DocumentSync(driveStore, fileStore);

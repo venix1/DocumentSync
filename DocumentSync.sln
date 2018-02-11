@@ -1,9 +1,11 @@
 
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentSync", "DocumentSync\DocumentSync.csproj", "{D617B8CD-195E-463A-8CA8-DD4C00C214B2}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentSync.Test", "DocumentSync.Test\DocumentSync.Test.csproj", "{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LibDocumentSync", "LibDocumentSync\LibDocumentSync.csproj", "{D617B8CD-195E-463A-8CA8-DD4C00C214B2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentSync", "DocumentSync\DocumentSync.csproj", "{8E3CFC60-88B8-483F-B1B9-0D944F751063}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,35 +13,40 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Debug|x86.ActiveCfg = Debug|x86
-		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Debug|x86.Build.0 = Debug|x86
-		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Release|x86.ActiveCfg = Release|x86
-		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Release|x86.Build.0 = Release|x86
 		{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}.Debug|x86.ActiveCfg = Debug|Any CPU
 		{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}.Debug|x86.Build.0 = Debug|Any CPU
 		{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}.Release|x86.ActiveCfg = Release|Any CPU
 		{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}.Release|x86.Build.0 = Release|Any CPU
+		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Debug|x86.ActiveCfg = Debug|x86
+		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Debug|x86.Build.0 = Debug|x86
+		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Release|x86.ActiveCfg = Release|x86
+		{D617B8CD-195E-463A-8CA8-DD4C00C214B2}.Release|x86.Build.0 = Release|x86
+		{8E3CFC60-88B8-483F-B1B9-0D944F751063}.Debug|x86.ActiveCfg = Debug|x86
+		{8E3CFC60-88B8-483F-B1B9-0D944F751063}.Debug|x86.Build.0 = Debug|x86
+		{8E3CFC60-88B8-483F-B1B9-0D944F751063}.Release|x86.ActiveCfg = Release|x86
+		{8E3CFC60-88B8-483F-B1B9-0D944F751063}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(MonoDevelopProperties) = preSolution
 		Policies = $0
 		$0.TextStylePolicy = $1
-		$1.FileWidth = 120
-		$1.TabsToSpaces = False
 		$1.EolMarker = Unix
-		$1.inheritsSet = VisualStudio
-		$1.inheritsScope = text/plain
 		$1.scope = text/x-csharp
 		$0.CSharpFormattingPolicy = $2
-		$2.IndentSwitchSection = True
-		$2.SpacingAfterMethodDeclarationName = False
-		$2.SpaceAfterMethodCallName = False
-		$2.SpaceBeforeOpenSquareBracket = False
-		$2.inheritsSet = Mono
-		$2.inheritsScope = text/x-csharp
 		$2.scope = text/x-csharp
+		$2.NewLinesForBracesInProperties = False
+		$2.NewLinesForBracesInAccessors = False
+		$2.NewLinesForBracesInAnonymousMethods = False
+		$2.NewLinesForBracesInControlBlocks = False
+		$2.NewLinesForBracesInAnonymousTypes = False
+		$2.NewLinesForBracesInObjectCollectionArrayInitializers = False
+		$2.NewLinesForBracesInLambdaExpressionBody = False
+		$2.NewLineForElse = False
+		$2.NewLineForCatch = False
+		$2.NewLineForFinally = False
+		$2.NewLineForMembersInObjectInit = False
+		$2.NewLineForMembersInAnonymousTypes = False
+		$2.NewLineForClausesInQuery = False
 		$0.StandardHeader = $3
-		$3.Text = 
-		$3.IncludeInNewFiles = True
 		$0.NameConventionPolicy = $4
 		$4.Rules = $5
 		$5.NamingRule = $6
@@ -169,6 +176,5 @@ Global
 		$25.IncludeInstanceMembers = True
 		$25.IncludeStaticEntities = True
 		$0.VersionControlPolicy = $27
-		$27.inheritsSet = Mono
 	EndGlobalSection
 EndGlobal

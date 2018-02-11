@@ -86,18 +86,20 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="IDocumentStore.cs" />
-    <Compile Include="GoogleDocumentStore.cs" />
-    <Compile Include="FileSystemDocumentStore.cs" />
-    <Compile Include="GoogleDocumentCache.cs" />
+    <Compile Include="src\DocumentSync.cs" />
+    <Compile Include="src\IDocumentStore.cs" />
+    <Compile Include="src\Backend\FileSystem\FileSystemDocumentStore.cs" />
+    <Compile Include="src\Backend\GoogleDrive\GoogleDocumentCache.cs" />
+    <Compile Include="src\Backend\GoogleDrive\GoogleDocumentCacheDBML.cs" />
+    <Compile Include="src\Backend\GoogleDrive\GoogleDocumentStore.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="Design.md" />
     <None Include="TODO.md" />
     <None Include="app.config" />
+    <None Include="src\Backend\GoogleDrive\GoogleDocumentCacheDBML.dbml" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="client_secret.json" />
