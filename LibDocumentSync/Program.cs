@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace DocumentSync
 {
-class DocumentSync
+	public class DocumentSync
 	{
 		IDocumentStore[] DocumentStores { get; set; }
 		IDocumentStore PrimaryDocumentStore { get; set; }
@@ -58,23 +58,6 @@ class DocumentSync
 				Console.WriteLine(ex);
 			}
 			*/
-		}
-	}
-
-	class MainClass
-	{
-		public static void Main(string[] args)
-		{
-			if (args.Length != 2)
-			{
-				Console.WriteLine("Usage: Watcher.exe <drive folder> <directory>");
-				return;
-			}
-
-			var driveStore = new GoogleDriveDocumentStore(args[0]);
-			var fileStore = new FileSystemDocumentStore(args[1]);
-			var program = new DocumentSync(driveStore, fileStore);
-			program.Converge();
 		}
 	}
 }
