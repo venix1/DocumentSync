@@ -1,30 +1,24 @@
-﻿using Google.Apis.Auth.OAuth2;
-using Google.Apis.Drive.v3;
-using Google.Apis.Drive.v3.Data;
-using Google.Apis.Util.Store;
-using System;
-
-using System.Diagnostics;
-using System.Security.Cryptography;
-using System.IO;
-using System.Threading;
-
-using GoogleFile = Google.Apis.Drive.v3.Data.File;
+﻿using System;
+using System.Collections.Generic;
 
 namespace FSync
 {
 class DocumentSync
 	{
-		IDocumentStore[] DocumentStores { get; set;}
+		IDocumentStore[] DocumentStores { get; set; }
+		IDocumentStore PrimaryDocumentStore { get; set; }
 		public DocumentSync(params IDocumentStore[] documents)
 		{
+			DocumentStores = documents;
 		}
 
 		public void Converge()
 		{
-			// Get Documents in A, store in path, IDocument hash 
-			// Get Documents in B, store in path, IDocument hash
+			var documents = new Dictionary<String, IDocument>();
 
+			foreach (IDocument document in DocumentStores[0].List()) {
+				documents.Add(document.FullName, document);
+			}
 		}
 
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
