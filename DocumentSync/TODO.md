@@ -83,9 +83,9 @@ Sharing violation on Drive Update.
 
 Watcher events sometimes come out of order.
  * THIS IS NOT GOOD.  Correct order is Created, Changed, Deleted.
-  File: /home/venix/projects/FSync/FSync/bin/Debug/PortableApps/test Changed <File must exist>
-  File: /home/venix/projects/FSync/FSync/bin/Debug/PortableApps/test Deleted <File must exist>
-  File: /home/venix/projects/FSync/FSync/bin/Debug/PortableApps/test Created <file must exist>
+  File: /home/venix/projects/DocumentSync/DocumentSync/bin/Debug/PortableApps/test Changed <File must exist>
+  File: /home/venix/projects/DocumentSync/DocumentSync/bin/Debug/PortableApps/test Deleted <File must exist>
+  File: /home/venix/projects/DocumentSync/DocumentSync/bin/Debug/PortableApps/test Created <file must exist>
  * Solved by doing a file check
 
 Build Queue based on Name.  

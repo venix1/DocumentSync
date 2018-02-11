@@ -1,9 +1,9 @@
 
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FSync", "FSync\FSync.csproj", "{D617B8CD-195E-463A-8CA8-DD4C00C214B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentSync", "DocumentSync\DocumentSync.csproj", "{D617B8CD-195E-463A-8CA8-DD4C00C214B2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FSync.Test", "FSync.Test\FSync.Test.csproj", "{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentSync.Test", "DocumentSync.Test\DocumentSync.Test.csproj", "{32FC4CB1-0914-47A2-B4C8-EB07E0C6F4E3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

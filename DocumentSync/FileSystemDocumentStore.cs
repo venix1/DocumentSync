@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace FSync
+namespace DocumentSync
 {
 	public class FileSystemDocument : IDocument
 	{

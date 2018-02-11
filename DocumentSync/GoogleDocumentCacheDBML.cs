@@ -8,7 +8,7 @@
 // Auto-generated from main on 2017-02-03 16:33:32Z.
 // Please visit http://code.google.com/p/dblinq2007/ for more information.
 //
-namespace FSync
+namespace DocumentSync
 {
 	using System;
 	using System.ComponentModel;

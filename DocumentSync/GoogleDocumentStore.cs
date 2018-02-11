@@ -10,7 +10,7 @@ using Mono.Data.Sqlite;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
-namespace FSync
+namespace DocumentSync
 {
 	public class GoogleDriveDocument : IDocument
 	{
@@ -158,7 +158,7 @@ namespace FSync
 
 			// Authenticate
 			using (var stream =
-				   System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("FSync.client_secret.json")) {
+				   System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("DocumentSync.client_secret.json")) {
 				var credPath = Path.Combine(ApplicationPath, ".credentials/drive-dotnet-sync.json");
 
 				credential = GoogleWebAuthorizationBroker.AuthorizeAsync(

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace FSync
+namespace DocumentSync
 {
 class DocumentSync
 	{

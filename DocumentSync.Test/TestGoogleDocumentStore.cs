@@ -9,7 +9,7 @@ using Google.Apis.Util.Store;
 
 using System.Linq;
 
-namespace FSync.Test
+namespace DocumentSync.Test
 {
 	public class TestGoogleDocumentStore
 	{

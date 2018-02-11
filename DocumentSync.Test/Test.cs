@@ -4,7 +4,7 @@ using Google.Apis.Drive.v3.Data;
 using GoogleFile = Google.Apis.Drive.v3.Data.File;
 using System.IO;
 
-namespace FSync.Test
+namespace DocumentSync.Test
 {
 	[TestFixture()]
 	public class FileSystemInodeTest

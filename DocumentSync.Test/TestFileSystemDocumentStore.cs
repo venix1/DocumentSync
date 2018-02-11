@@ -7,7 +7,7 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
 
-namespace FSync.Test
+namespace DocumentSync.Test
 {
 	public class TestFileSystemDocumentStore
 	{

@@ -5,8 +5,8 @@
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
     <ProjectGuid>{D617B8CD-195E-463A-8CA8-DD4C00C214B2}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>FSync</RootNamespace>
-    <AssemblyName>FSync</AssemblyName>
+    <RootNamespace>DocumentSync</RootNamespace>
+    <AssemblyName>DocumentSyncc</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">

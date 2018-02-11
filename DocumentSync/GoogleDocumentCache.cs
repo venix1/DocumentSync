@@ -1,4 +1,4 @@
-namespace FSync
+namespace DocumentSync
 {
 	using System;
 	using System.Data;
