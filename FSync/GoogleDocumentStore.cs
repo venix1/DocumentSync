@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
@@ -275,6 +276,14 @@ namespace FSync
 			return document;
 		}
 
+
+		public IEnumerable<IDocument> List()
+		{
+			foreach (var document in EnumerateFiles("/", "", SearchOption.AllDirectories)) {
+				yield return document;
+			}
+		}
+
 		public IEnumerable<IDocument> GetContents(IDocument document)
 		{
 			FilesResource.ListRequest listRequest = DriveService.Files.List();
@@ -290,6 +299,33 @@ namespace FSync
 				}
 			} while (!String.IsNullOrEmpty(listRequest.PageToken));
 		}
+
+		public IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options = SearchOption.TopDirectoryOnly)
+		{
+			var document = GetByPath(path);
+			if (!document.IsDirectory)
+				throw new Exception("Not a directory");
+
+			var regex = new Regex(filter);
+
+			var dirs = new Queue<IDocument>();
+
+			do {
+				foreach(var doc in GetContents(document)) {
+					if (doc.IsDirectory)
+						dirs.Enqueue(doc);
+
+					if (regex.Matches(doc.Name).Count > 0)
+						yield return doc;
+				}
+				if (dirs.Count > 0)
+					document = dirs.Dequeue();
+				else
+					document = null;
+
+			} while (options != SearchOption.TopDirectoryOnly && document != null); 
+		}
+
 
 		public IDocument GetByPath(string path)
 		{

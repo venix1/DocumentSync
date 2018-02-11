@@ -77,6 +77,11 @@ namespace FSync
 		IDocument GetById(string id);
 		IDocument GetByPath(string path);
 
+		IEnumerable<IDocument> GetContents(IDocument document);
+		IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options);
+
+		IEnumerable<IDocument> List();
+
 		DocumentWatcher Watch();
 	}
 
