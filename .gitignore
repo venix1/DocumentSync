@@ -1,7 +1,7 @@
-#Autosave files
+# Autosave files
 *~
 
-#build
+# build
 [Oo]bj/
 [Bb]in/
 packages/
@@ -22,19 +22,23 @@ config.status
 aclocal.m4
 install-sh
 autom4te.cache/
+.nuget/
+.sonarlint/
 *.user
 *.tar.gz
 tarballs/
 test-results/
 Thumbs.db
 
-#Mac bundle stuff
+# Mac bundle stuff
 *.dmg
 *.app
 
-#resharper
+# resharper
 *_Resharper.*
 *.Resharper
 
-#dotCover
+# dotCover
 *.dotCover
+
+# nuget
