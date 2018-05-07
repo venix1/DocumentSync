@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace DocumentSync
 {
@@ -12,14 +13,57 @@ namespace DocumentSync
 			DocumentStores = documents;
 		}
 
-		public void Converge()
+		class DocumentComparer : IEqualityComparer<IDocument>
 		{
-			var documents = new Dictionary<String, IDocument>();
+			public bool Equals(IDocument x, IDocument y)
+			{
+				if (x.Name == y.Name && x.Size == y.Size && x.ModifiedTime == y.ModifiedTime)
+					return true;
 
-			foreach (IDocument document in DocumentStores[0].List()) {
-				documents.Add(document.FullName, document);
+				if (x.Name == y.Name && x.Size == y.Size && x.Md5Checksum == y.Md5Checksum)
+					return true;
+
+				return false;
+			}
+
+			public int GetHashCode(IDocument obj)
+			{
+				unchecked  // overflow is fine
+				{
+					int hash = 17;
+					hash = hash * 23 + (obj.Name ?? "").GetHashCode();
+					hash = hash * 23 + obj.Size.GetHashCode();
+					//hash = hash * 23 + obj.ModifiedTime.GetHashCode();
+					return hash;
+				}
 			}
 		}
+
+		public void Converge()
+		{
+			var files = new List<IDocument>();
+			var srcSync = new Dictionary<String, IDocument>();
+			var dstSync = new Dictionary<String, IDocument>();
+
+			// Full Sync, Md5 only
+			// Remove files which match name, size, modified time.
+			// Metadata updates for file swith name, size, md5
+
+			// Extract name, size, modified, md5 from all stores.
+			foreach (var store in DocumentStores) {
+				files.AddRange(store);
+			}
+
+			var conflicts = files.Distinct(new DocumentComparer());
+
+			foreach( var file in conflicts) {
+				Console.WriteLine(file.Name);
+			}
+
+			// Subtract names to find unique files(remove from lists).  Queue as sync.
+			// Remaining files are conflict.
+		}
+
 
 		private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
 		{
