@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 
 namespace DocumentSync
 {
 	public class FileSystemDocument : IDocument
 	{
-		FileSystemDocumentStore Owner { get; set; }
+		public IDocumentStore Owner { get; private set; }
+		// FileSystemDocumentStore Owner { get; set; }
 		FileSystemInfo Document { get; set; }
 
 		FileInfo FileInfo { get { return Document as FileInfo; } set { Document = value; } }
@@ -20,16 +22,22 @@ namespace DocumentSync
 
 		// IDocument Interface
 
-		public string Id { get { return Document.FullName; } }
-		public string Name { get { return Document.Name; } }
-		public string FullName { get { return Document.FullName; } }
-		public DateTime CreatedTime { get { return Document.CreationTime; }}
-		public DateTime ModifiedTime { get { return Document.LastWriteTime; } }
-		public IDocument Parent { get { throw new NotImplementedException(); } }
-		public long Version { get { throw new NotImplementedException(); } }
-		public bool Deleted { get { throw new NotImplementedException(); } }
-		public bool Exists { get { throw new NotImplementedException(); } }
-		public bool Trashed { get { throw new NotImplementedException(); } }
+		public string Id { get => Document.FullName; }
+		public string Name { get => Document.Name; }
+		public string FullName { get => ((FileSystemDocumentStore)Owner).MakeRelative(Document.FullName); }
+		public long Size { get => IsFile ? FileInfo.Length : 0; }
+
+		public DateTime CreatedTime => Document.CreationTime;
+		public DateTime ModifiedTime => Document.LastWriteTime;
+		public IDocument Parent => throw new NotImplementedException();
+		public long Version => throw new NotImplementedException();
+		public bool Deleted => throw new NotImplementedException();
+		public bool Exists => throw new NotImplementedException();
+		public bool Trashed => throw new NotImplementedException();
+
+		public StreamReader OpenText() {
+			return FileInfo.OpenText();
+		}
 
 		public bool IsDirectory {
 			get {
@@ -48,12 +56,29 @@ namespace DocumentSync
 			}
 
 		public string Md5Checksum {
-				get { throw new Exception("stub"); }
+			get { return CalculateMd5Sum(); }
+		}
+
+		private string _Md5Checksum;
+		private string CalculateMd5Sum() {
+			using (var md5hash = MD5.Create()) {
+				if (IsFile) {
+					using (var stream = File.OpenRead(FileInfo.FullName)) {
+						var hash = md5hash.ComputeHash(stream);
+						_Md5Checksum = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+					}
+				} else {
+					_Md5Checksum = "d41d8cd98f00b204e9800998ecf8427e";
+				}
 			}
+			return _Md5Checksum;
+		}
 
 		public void Update(System.IO.Stream stream)
 		{
-			throw new NotImplementedException("File Modifications not implemented");
+			using (var fp = FileInfo.Create()) {
+				stream.CopyTo(fp);
+			}
 		}
 		public void Delete()
 		{
@@ -61,30 +86,41 @@ namespace DocumentSync
 		}
 	}
 
-	public class FileSystemDocumentStore : IDocumentStore
+	public class FileSystemDocumentStore : DocumentStore
 	{
+		string Root { get; set;  }
+
 		public FileSystemDocumentStore(string root)
 		{
-			throw new Exception("Unable to find root folder");
+			if (System.IO.Directory.Exists(root)) {
+				// TOOD: If not a document store get explicit permission
+				// throw new Exception("Directory exists");
+			}
+			else {
+				Directory.CreateDirectory(root);
+			}
+			Root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
 		}
 
-		public IDocument Create(string path, DocumentType type)
+		public override IDocument Create(string path, DocumentType type)
 		{
+			path = Path.Combine(Root, path);
 			var tail = System.IO.Path.GetFileName(path);
 			var head = System.IO.Path.GetDirectoryName(path);
 
 			return Create(GetByPath(head), tail, type);
 		}
 
-		public IDocument Create(IDocument parent, string name, DocumentType type)
+		public override IDocument Create(IDocument parent, string name, DocumentType type)
 		{
 			FileSystemInfo fsi;
-			var path = Path.Combine(parent.FullName, name);
+			var path = MakeAbsolute(Path.Combine(parent.FullName, name));
+			Console.WriteLine(path);
 
 			switch (type) {
 				case DocumentType.File:
 					var fi = new FileInfo(path);
-					fi.Create();
+					fi.Create().Dispose();
 					fsi = fi;
 					break;
 				case DocumentType.Directory:
@@ -98,7 +134,7 @@ namespace DocumentSync
 			return new FileSystemDocument(this, fsi);
 		}
 
-		public void Delete(IDocument arg0)
+		public override void Delete(IDocument arg0)
 		{
 			if (arg0.IsFile)
 				File.Delete(arg0.FullName);
@@ -107,52 +143,77 @@ namespace DocumentSync
 				Directory.Delete(arg0.FullName, true);
 		}
 
-		public void MoveTo(IDocument src, IDocument dst)
-		{
-			throw new Exception("stub");
-		}
-		public void MoveTo(IDocument src, string name)
-		{
-			throw new Exception("stub");
+		public override void Copy(IDocument src, IDocument dst) {
+			throw new NotImplementedException();
 		}
 
-		public IDocument GetById(string id)
+		public override void MoveTo(IDocument src, IDocument dst)
+		{
+			throw new NotImplementedException();
+		}
+		public override void MoveTo(IDocument src, string name)
+		{
+			throw new NotImplementedException();
+		}
+
+		public override IDocument GetById(string id)
 		{
 			// For now, id and Path are the same.
 			return GetByPath(id);
 		}
 
-		public IDocument GetByPath(string path)
+		public override IDocument GetByPath(string path)
 		{
+			var absPath = MakeAbsolute(path);
+			Console.WriteLine(absPath);
 			FileSystemInfo fi;
-			if (System.IO.Directory.Exists(path))
-				fi = new DirectoryInfo(path);
-			else if (System.IO.File.Exists(path))
-				fi = new FileInfo(path);
+			if (System.IO.Directory.Exists(absPath))
+				fi = new DirectoryInfo(absPath);
+			else if (System.IO.File.Exists(absPath))
+				fi = new FileInfo(absPath);
 			else
 				throw new Exception("File does not exist.");
 
 			return new FileSystemDocument(this, fi);
 		} 
 
-		public DocumentWatcher Watch()
+		public override DocumentWatcher Watch()
 		{
 			return new FileSystemDocumentWatcher();
 		}
 
-		public IEnumerable<IDocument> GetContents(IDocument document)
-		{
+		/*
+		 * TODO: Likely to break on large file counts
+		 */
+		public override IEnumerator<IDocument> GetEnumerator() {
+			foreach(var item in Directory.EnumerateFileSystemEntries(Root, "*", SearchOption.AllDirectories))  {
+				yield return LoadDocument(item);
+			}
+		}
+
+		private FileSystemDocument LoadDocument(string path) {
+			// Cache Lookups
+			if (Directory.Exists(path)) {
+				return new FileSystemDocument(this, new DirectoryInfo(path));
+
+			} else if (File.Exists(path)) {
+				return new FileSystemDocument(this, new FileInfo(path));
+			}
+
 			throw new NotImplementedException();
 		}
 
-		public IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options)
-		{
-			throw new NotImplementedException();
+		/**
+		 * Translates Document path to Filesystem Path
+		 */
+		internal string MakeAbsolute(string path) {
+			return Path.GetFullPath(Path.Combine(Root, "." + Path.DirectorySeparatorChar + path));
 		}
-
-		public IEnumerable<IDocument> List()
-		{
-			throw new NotImplementedException();
+		/**
+		 * Translates Filesystem path to Document path
+		 */
+		internal string MakeRelative(string path) {
+			return path.Substring(Root.Length);
 		}
 	}
 
