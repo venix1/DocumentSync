@@ -25,13 +25,22 @@ namespace DocumentSync
             FullName = Owner.GetPath(this);
         }
 
-        public string Id { get { return Document.Id; } }
-        public string Name { get { return Document.Name; } }
+        public string Id => Document.Id;
+        public string Name => Document.Name;
         public string FullName { get; private set; }
-        public DateTime CreatedTime { get { return Document.CreatedTime.GetValueOrDefault(DateTime.Now); } }
-        public DateTime ModifiedTime { get { return Document.ModifiedTime.GetValueOrDefault(DateTime.Now); } }
-        public long Version { get { return Document.Version.GetValueOrDefault(); } }
-        public bool Deleted { get; internal set; }
+        public long Size => Document.Size.GetValueOrDefault(0);
+        public DateTime CreatedTime => Document.CreatedTime.GetValueOrDefault(DateTime.Now);
+        public DateTime ModifiedTime => Document.ModifiedTime.GetValueOrDefault(DateTime.Now);
+        public long Version => Document.Version.GetValueOrDefault();
+        public bool Deleted {
+            get {
+                throw new System.NotImplementedException();
+            }
+
+            set {
+                throw new System.NotImplementedException();
+            }
+        }
 
         public IDocument Parent {
             get {
@@ -56,6 +65,10 @@ namespace DocumentSync
             get {
                 return Owner.GetContents(this);
             }
+        }
+
+        public StreamReader OpenText() {
+            throw new NotImplementedException();
         }
 
         public void Update(System.IO.Stream stream)
@@ -107,7 +120,7 @@ namespace DocumentSync
         }
     }
 
-    public class GoogleDriveDocumentStore : IDocumentStore
+    public class GoogleDriveDocumentStore : DocumentStore
     {
         static string[] Scopes = { DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadata };
         static string ApplicationName = "DocumentSync - Google Drive Plugin";
@@ -190,7 +203,7 @@ namespace DocumentSync
             return new GoogleDriveDocument(this, file);
         }
 
-        public IDocument Create(string path, DocumentType type)
+        public override IDocument Create(string path, DocumentType type)
         {
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
@@ -198,7 +211,7 @@ namespace DocumentSync
             return Create(GetByPath(head), tail, type);
         }
 
-        public IDocument Create(IDocument parent, string name, DocumentType type)
+        public override IDocument Create(IDocument parent, string name, DocumentType type)
         {
             // Verify existence of Parent.
             var file = new DriveFile();
@@ -233,13 +246,13 @@ namespace DocumentSync
             // Return new Document;
         }
 
-        public void Delete(IDocument arg0)
+        public override void Delete(IDocument arg0)
         {
             var deleteRequest = DriveService.Files.Delete(arg0.Id);
             Console.WriteLine(deleteRequest.Execute());
         }
 
-        public void MoveTo(IDocument src, IDocument dst)
+        public override void MoveTo(IDocument src, IDocument dst)
         {
             throw new Exception("stub");
             if (dst.IsFile) {
@@ -247,7 +260,7 @@ namespace DocumentSync
             }
             // Update Parent
         }
-        public void MoveTo(IDocument src, string name)
+        public override void MoveTo(IDocument src, string name)
         {
             throw new Exception("stub");
             // Parse name as path
@@ -256,7 +269,12 @@ namespace DocumentSync
             // Is Directory?
         }
 
-        public IDocument GetById(string id)
+        public override IEnumerator<IDocument> GetEnumerator()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override IDocument GetById(string id)
         {
             // Check Cache First
             GoogleDriveDocument document;
@@ -276,58 +294,7 @@ namespace DocumentSync
             return document;
         }
 
-
-        public IEnumerable<IDocument> List()
-        {
-            foreach (var document in EnumerateFiles("/", "", SearchOption.AllDirectories)) {
-                yield return document;
-            }
-        }
-
-        public IEnumerable<IDocument> GetContents(IDocument document)
-        {
-            FilesResource.ListRequest listRequest = DriveService.Files.List();
-            listRequest.PageSize = 10;
-            listRequest.Fields = String.Format("nextPageToken, files({0})", RequiredFields);
-            listRequest.Q = String.Format("'{0}' in parents and trashed != true", document.Id);
-
-            do {
-                FileList files = listRequest.Execute();
-                listRequest.PageToken = files.NextPageToken;
-                foreach (var file in files.Files) {
-                    yield return new GoogleDriveDocument(this, file);
-                }
-            } while (!String.IsNullOrEmpty(listRequest.PageToken));
-        }
-
-        public IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options = SearchOption.TopDirectoryOnly)
-        {
-            var document = GetByPath(path);
-            if (!document.IsDirectory)
-                throw new Exception("Not a directory");
-
-            var regex = new Regex(filter);
-
-            var dirs = new Queue<IDocument>();
-
-            do {
-                foreach(var doc in GetContents(document)) {
-                    if (doc.IsDirectory)
-                        dirs.Enqueue(doc);
-
-                    if (regex.Matches(doc.Name).Count > 0)
-                        yield return doc;
-                }
-                if (dirs.Count > 0)
-                    document = dirs.Dequeue();
-                else
-                    document = null;
-
-            } while (options != SearchOption.TopDirectoryOnly && document != null); 
-        }
-
-
-        public IDocument GetByPath(string path)
+        public override IDocument GetByPath(string path)
         {
             IDocument dir = GetById("root");
             if (String.IsNullOrEmpty(path) || path == "/") {
@@ -358,12 +325,6 @@ namespace DocumentSync
 
             return dir;
         }
-
-        /*
-        private string GetPath(DriveFile file)
-        {
-        }
-        */
 
         public string GetPath(IDocument document)
         {
@@ -475,7 +436,7 @@ namespace DocumentSync
         }
         */
 
-        public DocumentWatcher Watch()
+        public override DocumentWatcher Watch()
         {
             return new GoogleDriveDocumentWatcher(this);
         }
