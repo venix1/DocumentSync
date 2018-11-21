@@ -6,7 +6,6 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
-using Mono.Data.Sqlite;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
@@ -14,7 +13,7 @@ namespace DocumentSync
 {
     public class GoogleDriveDocument : IDocument
     {
-        GoogleDriveDocumentStore Owner;
+        public IDocumentStore Owner { get; private set; }
         internal DriveFile Document { get; set; }
 
         internal GoogleDriveDocument(GoogleDriveDocumentStore owner, DriveFile document)
@@ -22,7 +21,7 @@ namespace DocumentSync
             Owner = owner;
             Document = document;
 
-            FullName = Owner.GetPath(this);
+            // FullName = Document.FulOwner.GetPath(this);
         }
 
         public string Id => Document.Id;
@@ -30,7 +29,10 @@ namespace DocumentSync
         public string FullName { get; private set; }
         public long Size => Document.Size.GetValueOrDefault(0);
         public DateTime CreatedTime => Document.CreatedTime.GetValueOrDefault(DateTime.Now);
-        public DateTime ModifiedTime => Document.ModifiedTime.GetValueOrDefault(DateTime.Now);
+        public DateTime ModifiedTime {
+            get => Document.ModifiedTime.GetValueOrDefault(DateTime.Now);
+            set => throw new NotImplementedException(); 
+        }
         public long Version => Document.Version.GetValueOrDefault();
         public bool Deleted {
             get {
@@ -56,7 +58,8 @@ namespace DocumentSync
 
         public bool Trashed { get { return Document.Trashed.GetValueOrDefault(false); } }
         public bool Exists { get { return Owner.GetById(Document.Id) != null; } }
-        public bool IsDirectory { get { return Document.MimeType == Owner.DirectoryType; } }
+        //public bool IsDirectory { get { return Document.MimeType == Owner.DirectoryType; } }
+        public bool IsDirectory => throw new NotImplementedException();
         public bool IsFile { get { return !IsDirectory; } }
 
         public string Md5Checksum { get { return Document.Md5Checksum; } }
@@ -71,9 +74,14 @@ namespace DocumentSync
             throw new NotImplementedException();
         }
 
+        public Stream OpenRead()
+        {
+            throw new NotImplementedException();
+        }
+
         public void Update(System.IO.Stream stream)
         {
-            Owner.Update(this, stream);
+            throw new NotImplementedException(); // Owner.Update(this, stream);
         }
 
         public void Delete()
@@ -142,11 +150,7 @@ namespace DocumentSync
         {
             DriveService = driveService;
 
-            // TODO: Encapsulate into Wrapper Class.
-            // TODO: GoogleDocumentCache should interface with SQLite class and not expose it.
-            var dbname = System.IO.Path.Combine(ApplicationPath, "dsync.db");
-            var db = new System.Data.SQLite.SQLiteConnection("Data Source=" + dbname);
-            Cache = new GoogleDocumentCache(db);
+            Cache = new GoogleDocumentCache();
 
             ChangeThread = new GoogleDriveDocumentWatcher(this);
             ChangeThread.EnableRaisingEvents = true;
@@ -250,6 +254,11 @@ namespace DocumentSync
         {
             var deleteRequest = DriveService.Files.Delete(arg0.Id);
             Console.WriteLine(deleteRequest.Execute());
+        }
+
+        public override void Copy(IDocument src, IDocument dst)
+        {
+            throw new NotImplementedException();
         }
 
         public override void MoveTo(IDocument src, IDocument dst)
