@@ -4,6 +4,66 @@ using System.Linq;
 
 namespace DocumentSync
 {
+    public abstract class DocumentComparer : IEqualityComparer<IDocument>
+    {
+        abstract public bool Equals(IDocument x, IDocument y);
+
+        protected bool MetadataIsEqual(IDocument x, IDocument y)
+        {
+            /*
+            Console.WriteLine ("DocumentComparer:\n  {0} {1} {2}\n  {3} {4} {5}",
+                x.Name, x.Size, x.ModifiedTime,
+            y.Name, y.Size, y.ModifiedTime);
+            */
+
+            return x.Name == y.Name &&
+                    x.Size == y.Size &&
+                    x.ModifiedTime == y.ModifiedTime;
+        }
+
+        protected bool ContentIsEqual(IDocument x, IDocument y)
+        {
+            return x.Name == y.Name &&
+                    x.Size == y.Size &&
+                    x.Md5Checksum == y.Md5Checksum;
+        }
+
+        /* HashCode is always consistent */
+        public int GetHashCode(IDocument obj)
+        {
+            //Console.WriteLine ("HashCode: {0:X} {1}", obj.FullName.GetHashCode (), obj.FullName);
+            return obj.FullName.GetHashCode();
+        }
+    }
+    public class FullDocumentComparer : DocumentComparer
+    {
+        override public bool Equals(IDocument x, IDocument y)
+        {
+            return ContentIsEqual(x, y);
+        }
+    }
+    public class FastDocumentComparer : DocumentComparer
+    {
+        override public bool Equals(IDocument x, IDocument y)
+        {
+            return MetadataIsEqual(x, y) || ContentIsEqual(x, y);
+        }
+    }
+    public class MetadataDocumentComparer : DocumentComparer
+    {
+        override public bool Equals(IDocument x, IDocument y)
+        {
+            return MetadataIsEqual(x, y);
+        }
+    }
+    public class NameOnlyDocumentComparer : DocumentComparer
+    {
+        override public bool Equals(IDocument x, IDocument y)
+        {
+            return x.FullName == y.FullName;
+        }
+    }
+
     public class DocumentSync
     {
         IDocumentStore[] DocumentStores { get; set; }
@@ -13,55 +73,74 @@ namespace DocumentSync
             DocumentStores = documents;
         }
 
-        class DocumentComparer : IEqualityComparer<IDocument>
-        {
-            public bool Equals(IDocument x, IDocument y)
-            {
-                if (x.Name == y.Name && x.Size == y.Size && x.ModifiedTime == y.ModifiedTime)
-                    return true;
-
-                if (x.Name == y.Name && x.Size == y.Size && x.Md5Checksum == y.Md5Checksum)
-                    return true;
-
-                return false;
-            }
-
-            public int GetHashCode(IDocument obj)
-            {
-                unchecked  // overflow is fine
-                {
-                    int hash = 17;
-                    hash = hash * 23 + (obj.Name ?? "").GetHashCode();
-                    hash = hash * 23 + obj.Size.GetHashCode();
-                    //hash = hash * 23 + obj.ModifiedTime.GetHashCode();
-                    return hash;
-                }
-            }
-        }
-
         public void Converge()
         {
-            var files = new List<IDocument>();
-            var srcSync = new Dictionary<String, IDocument>();
-            var dstSync = new Dictionary<String, IDocument>();
+            var files = new MultiValueDictionary<string, IDocument>();
+            var toSync = new List<IDocument>();
 
-            // Full Sync, Md5 only
-            // Remove files which match name, size, modified time.
-            // Metadata updates for file swith name, size, md5
-
-            // Extract name, size, modified, md5 from all stores.
+            // Extract all files from all stores.
             foreach (var store in DocumentStores) {
-                files.AddRange(store);
+                foreach(var document in store) {
+                    files.Add(document.FullName, document);
+                }
             }
 
-            var conflicts = files.Distinct(new DocumentComparer());
+            foreach (var item in files) {
+                Console.WriteLine("{0} {1}", item.Key, item.Value.Count());
 
-            foreach( var file in conflicts) {
-                Console.WriteLine(file.Name);
+                // One item in list
+
+                if (item.Value.Count() == 1) {
+                    toSync.Add(item.Value.First());
+                } else {
+                    var items = item.Value.Distinct(new MetadataDocumentComparer());
+
+                    foreach(var i in items) {
+                        Console.WriteLine("{0} {1}", i.FullName, i.ModifiedTime);
+                    }
+                    // Items in list match. nop
+                    // Items in list do not match
+                    if (items.Count() > 1) {
+                        toSync.Add(items.OrderByDescending(i => i.ModifiedTime).First());
+                    }
+                }
             }
 
-            // Subtract names to find unique files(remove from lists).  Queue as sync.
-            // Remaining files are conflict.
+            Console.WriteLine("Will Sync");
+            foreach(var item in toSync) {
+                    Console.WriteLine("{0}", item.FullName);
+            }
+            // Map<string, List<IDocument>>
+            // Group same named files together
+            // If equal delete group
+
+            // if a full sync
+            //var unique = files.Distinct(new FullDocumentComparer());
+            // else fast
+            //var unique = files.Distinct(new FastDocumentComparer());
+
+            // Check metadata inconsistencies(Name, Size, Md5 but not ModifiedTime)
+            // var metaUpdates = files.Distinct(new MetadataDocumentComparer());
+
+            /*
+            var conflicts = unique.Distinct(new NameOnlyDocumentComparer());
+            if (conflicts.Count() > 0)  {
+                foreach(var file in conflicts)
+                Console.WriteLine(file.FullName);
+                throw new NotImplementedException("Unable to handle conflicts");
+            }
+            */
+
+            /*
+            foreach(var file in unique) {
+                foreach(var store in DocumentStores) {
+                    if (file.Owner != store) {
+                        Console.WriteLine ("Cloning unique file {0}", file.FullName);
+                        //store.Clone (file, file.FullName);
+                    }
+                }
+            }
+            */
         }
 
 
