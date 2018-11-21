@@ -28,7 +28,10 @@ namespace DocumentSync
         public long Size { get => IsFile ? FileInfo.Length : 0; }
 
         public DateTime CreatedTime => Document.CreationTime;
-        public DateTime ModifiedTime => Document.LastWriteTime;
+        public DateTime ModifiedTime {
+            get => Document.LastWriteTime;
+            set => UpdateLastWriteTime(value);
+        }
         public IDocument Parent => throw new NotImplementedException();
         public long Version => throw new NotImplementedException();
         public bool Deleted => throw new NotImplementedException();
@@ -37,6 +40,11 @@ namespace DocumentSync
 
         public StreamReader OpenText() {
             return FileInfo.OpenText();
+        }
+
+        public Stream OpenRead()
+        {
+            return FileInfo.OpenRead();
         }
 
         public bool IsDirectory {
@@ -80,6 +88,11 @@ namespace DocumentSync
                 stream.CopyTo(fp);
             }
         }
+
+        public void UpdateLastWriteTime(DateTime value) {
+            FileInfo.LastWriteTime = value;
+        }
+
         public void Delete()
         {
             throw new NotImplementedException("File Modifications not implemented");
@@ -115,7 +128,7 @@ namespace DocumentSync
         {
             FileSystemInfo fsi;
             var path = MakeAbsolute(Path.Combine(parent.FullName, name));
-            Console.WriteLine(path);
+            Console.WriteLine("Creating {0}", path);
 
             switch (type) {
                 case DocumentType.File:
@@ -144,7 +157,11 @@ namespace DocumentSync
         }
 
         public override void Copy(IDocument src, IDocument dst) {
-            throw new NotImplementedException();
+            // TODO: Set attributes
+
+            using(var fp = src.OpenRead()) {
+                dst.Update(fp);
+            }
         }
 
         public override void MoveTo(IDocument src, IDocument dst)
@@ -165,7 +182,6 @@ namespace DocumentSync
         public override IDocument GetByPath(string path)
         {
             var absPath = MakeAbsolute(path);
-            Console.WriteLine(absPath);
             FileSystemInfo fi;
             if (System.IO.Directory.Exists(absPath))
                 fi = new DirectoryInfo(absPath);
