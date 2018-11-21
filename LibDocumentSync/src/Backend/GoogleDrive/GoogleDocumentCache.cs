@@ -1,31 +1,24 @@
 namespace DocumentSync
 {
-    using System;
-    using System.Data;
+    using Microsoft.EntityFrameworkCore;
     using System.Collections.Generic;
-    using System.Data.Common;
-    using System.Data.Entity;
     using System.Linq;
-    using SQLite.CodeFirst;
-
 
     public class GoogleDocumentCache : DbContext
     {
         public Dictionary<string, GoogleDriveDocument> Documents { get; protected set; }
         public DbSet<GoogleDocumentIndex> DocumentIndex { get; set; }
 
-        public GoogleDocumentCache(string connectionString) : base(connectionString) {
-            Documents = new Dictionary<string, GoogleDriveDocument>();
-        }
-        public GoogleDocumentCache(DbConnection db) : base(db, true) {
+        private void Initialize()
+        {
             Documents = new Dictionary<string, GoogleDriveDocument>();
         }
 
-        protected override void OnModelCreating(DbModelBuilder modelBuilder)
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            var sqliteConnectionInitializer = new SqliteCreateDatabaseIfNotExists<GoogleDocumentCache>(modelBuilder);
-            Database.SetInitializer(sqliteConnectionInitializer);
+            optionsBuilder.UseSqlite("Data Source=goole_drive.db");
         }
+
 
         public void Add(IDocument document)
         {
@@ -33,7 +26,8 @@ namespace DocumentSync
 
             index = DocumentIndex.SingleOrDefault(i => i.Id == document.Id);
 
-            if (index == null) {
+            if (index == null)
+            {
                 index = new GoogleDocumentIndex();
                 DocumentIndex.Add(index);
                 Documents.Add(document.Id, (GoogleDriveDocument)document);
