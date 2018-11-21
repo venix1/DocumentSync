@@ -4,140 +4,140 @@ using System.IO;
 
 namespace DocumentSync
 {
-	public class DocumentException : Exception {
-	}
+    public class DocumentException : Exception {
+    }
 
-	public class DocumentDoesNotExistException : Exception
-	{
-	}
+    public class DocumentDoesNotExistException : Exception
+    {
+    }
 
-	public enum DocumentType
-	{
-		File,
-		Directory,
-		Link,
-	}
-	
-	public interface IDocument
-	{
-		string Id { get; }
-		string Name { get; }
-		string FullName { get; }
-		DateTime CreatedTime { get; }
-		DateTime ModifiedTime { get; }
-		long Version { get; }
+    public enum DocumentType
+    {
+        File,
+        Directory,
+        Link,
+    }
+    
+    public interface IDocument
+    {
+        string Id { get; }
+        string Name { get; }
+        string FullName { get; }
+        DateTime CreatedTime { get; }
+        DateTime ModifiedTime { get; }
+        long Version { get; }
 
-		bool Deleted { get; }
-
-
-		IDocument Parent { get; }
-		bool Exists { get; }
-		bool IsDirectory { get; }
-		bool IsFile { get; }
+        bool Deleted { get; }
 
 
+        IDocument Parent { get; }
+        bool Exists { get; }
+        bool IsDirectory { get; }
+        bool IsFile { get; }
 
-		bool Trashed { get; }
 
-		System.Collections.IEnumerable Children { get; }
 
-		string Md5Checksum { get; }
+        bool Trashed { get; }
 
-		// Operations
-		void Update(System.IO.Stream stream);
-		void Delete();
-	}
+        System.Collections.IEnumerable Children { get; }
 
-	public interface IDocumentEnumerable : IEnumerable<IDocument>
-	{
-	}
+        string Md5Checksum { get; }
 
-	public interface IDocumentEnumerator : IEnumerator<IDocument>
-	{
-	}
+        // Operations
+        void Update(System.IO.Stream stream);
+        void Delete();
+    }
 
-	public interface IDocumentStore
-	{
-		/*
-		 * One line function bulk. 
-		IDocument CreateFile(string path);
-		IDocument CreateFile(IDocument parent, string name);
+    public interface IDocumentEnumerable : IEnumerable<IDocument>
+    {
+    }
 
-		IDocument CreateDirectory(string path);
-		IDocument CreateDirectory(IDocument parent, string name);
-		*/
+    public interface IDocumentEnumerator : IEnumerator<IDocument>
+    {
+    }
 
-		IDocument Create(string path, DocumentType type);
-		IDocument Create(IDocument parent, string name, DocumentType type);
+    public interface IDocumentStore
+    {
+        /*
+         * One line function bulk. 
+        IDocument CreateFile(string path);
+        IDocument CreateFile(IDocument parent, string name);
 
-		void Delete(IDocument arg0);
-		void MoveTo(IDocument src, IDocument dst);
-		void MoveTo(IDocument src, string name);
+        IDocument CreateDirectory(string path);
+        IDocument CreateDirectory(IDocument parent, string name);
+        */
 
-		IDocument GetById(string id);
-		IDocument GetByPath(string path);
+        IDocument Create(string path, DocumentType type);
+        IDocument Create(IDocument parent, string name, DocumentType type);
 
-		IEnumerable<IDocument> GetContents(IDocument document);
-		IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options);
+        void Delete(IDocument arg0);
+        void MoveTo(IDocument src, IDocument dst);
+        void MoveTo(IDocument src, string name);
 
-		IEnumerable<IDocument> List();
+        IDocument GetById(string id);
+        IDocument GetByPath(string path);
 
-		DocumentWatcher Watch();
-	}
+        IEnumerable<IDocument> GetContents(IDocument document);
+        IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options);
 
-	public enum DocumentChangeType
-	{
-		All,
-		Changed,
-		Created,
-		Deleted,
-		Renamed
-	}
+        IEnumerable<IDocument> List();
 
-	public class DocumentEventArgs : EventArgs
-	{
-		public DocumentChangeType ChangeType { get; }
-		public IDocument Document { get; }
-		// public IDocument Original { get; }
+        DocumentWatcher Watch();
+    }
 
-		public DocumentEventArgs(DocumentChangeType type, IDocument document)
-		{
-			ChangeType = type;
-			Document = document;
-		}
-	}
+    public enum DocumentChangeType
+    {
+        All,
+        Changed,
+        Created,
+        Deleted,
+        Renamed
+    }
 
-	public delegate void DocumentEventHandler(
-		object sender,
-		DocumentEventArgs e
-	);
+    public class DocumentEventArgs : EventArgs
+    {
+        public DocumentChangeType ChangeType { get; }
+        public IDocument Document { get; }
+        // public IDocument Original { get; }
 
-	public enum NotifyFilters
-	{
-		Attributes,
-		CreationTime,
-		DirectoryName,
-		FileName,
-		LastAccess,
-		LastWrite,
-		Security,
-		Size
-	}
+        public DocumentEventArgs(DocumentChangeType type, IDocument document)
+        {
+            ChangeType = type;
+            Document = document;
+        }
+    }
 
-	public abstract class DocumentWatcher // : System.ComponentModel.Component
-	{
-		public abstract DocumentEventArgs Classify(IDocument change);
+    public delegate void DocumentEventHandler(
+        object sender,
+        DocumentEventArgs e
+    );
 
-		public bool EnableRaisingEvents { get; set; }
-		public bool IncludeSubdirectories { get; set; }
+    public enum NotifyFilters
+    {
+        Attributes,
+        CreationTime,
+        DirectoryName,
+        FileName,
+        LastAccess,
+        LastWrite,
+        Security,
+        Size
+    }
 
-		public string Filter { get; set; }
-		public NotifyFilters NotifyFilter { get; set; }
-		public string Path { get; set; }
+    public abstract class DocumentWatcher // : System.ComponentModel.Component
+    {
+        public abstract DocumentEventArgs Classify(IDocument change);
 
-		public DocumentEventHandler Changed;
-		public DocumentEventHandler Created;
-		public DocumentEventHandler Deleted;
-		public DocumentEventHandler Renamed;
-	}
+        public bool EnableRaisingEvents { get; set; }
+        public bool IncludeSubdirectories { get; set; }
+
+        public string Filter { get; set; }
+        public NotifyFilters NotifyFilter { get; set; }
+        public string Path { get; set; }
+
+        public DocumentEventHandler Changed;
+        public DocumentEventHandler Created;
+        public DocumentEventHandler Deleted;
+        public DocumentEventHandler Renamed;
+    }
 }
