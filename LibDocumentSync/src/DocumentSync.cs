@@ -64,8 +64,17 @@ namespace DocumentSync
         }
     }
 
+    public class ConvergenceEventArgs : EventArgs{
+        public List<IDocument> MergeDocuments;
+
+        public ConvergenceEventArgs(List<IDocument> merge) {
+            MergeDocuments = merge;
+        }
+    }
+
     public class DocumentSync
     {
+        public EventHandler<ConvergenceEventArgs> Convergence;
         IDocumentStore[] DocumentStores { get; set; }
         IDocumentStore PrimaryDocumentStore { get; set; }
         public DocumentSync(params IDocumentStore[] documents)
@@ -80,7 +89,7 @@ namespace DocumentSync
 
             // Extract all files from all stores.
             foreach (var store in DocumentStores) {
-                foreach(var document in store) {
+                foreach (var document in store) {
                     files.Add(document.FullName, document);
                 }
             }
@@ -92,24 +101,23 @@ namespace DocumentSync
 
                 if (item.Value.Count() == 1) {
                     toSync.Add(item.Value.First());
-                } else {
+                }
+                else {
                     var items = item.Value.Distinct(new MetadataDocumentComparer());
-
-                    foreach(var i in items) {
-                        Console.WriteLine("{0} {1}", i.FullName, i.ModifiedTime);
-                    }
-                    // Items in list match. nop
-                    // Items in list do not match
                     if (items.Count() > 1) {
                         toSync.Add(items.OrderByDescending(i => i.ModifiedTime).First());
                     }
                 }
+
+                Convergence?.Invoke(this, new ConvergenceEventArgs(toSync));
             }
 
-            Console.WriteLine("Will Sync");
             foreach(var item in toSync) {
-                    Console.WriteLine("{0}", item.FullName);
+                foreach(var store in DocumentStores) {
+
+                }
             }
+
             // Map<string, List<IDocument>>
             // Group same named files together
             // If equal delete group
