@@ -1,30 +1,27 @@
-﻿using NUnit.Framework;
+﻿
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using GoogleFile = Google.Apis.Drive.v3.Data.File;
 using System.IO;
+using Xunit;
 
 namespace DocumentSync.Test
 {
-	[TestFixture()]
 	public class FileSystemInodeTest
 	{
 	}
 
-	[TestFixture()]
 	public class UnifiedFileTest
 	{
 	}
 
-	[TestFixture()]
 	public class UnifiedFileSystemTest
 	{
 		GoogleFile DriveRoot;
 		FileSystemInfo FileRoot;
 
-		[SetUp]
-		protected void SetUp()
-		{
+		public UnifiedFileSystemTest() {
+
 			DriveRoot = new GoogleFile {
 			};
 
@@ -34,7 +31,7 @@ namespace DocumentSync.Test
 			FileRoot = new DirectoryInfo("/");
 		}
 
-		[Test]
+		[Fact]
 		public void GetDriveFileInfo_() {
 			var mockDriveService = new Moq.Mock<DriveService>();
 			var mockChangesResource = new Moq.Mock<ChangesResource>(null);

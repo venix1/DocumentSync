@@ -1,17 +1,15 @@
-﻿using NUnit.Framework;
-
-using System;
-using System.IO;
-using Google.Apis.Auth.OAuth2;
+﻿using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
-
+using System;
+using System.IO;
 using System.Linq;
+using Xunit;
 
 namespace DocumentSync.Test
 {
-	public class TestGoogleDocumentStore
+	public class TestGoogleDocumentStore : IDisposable
 	{
 		IDocument Root;
 		string TmpFolder;
@@ -20,11 +18,7 @@ namespace DocumentSync.Test
 		public TestGoogleDocumentStore()
 		{
 			DocumentStore = new GoogleDriveDocumentStore("fsync-unittest");
-		}
 
-		[SetUp]
-		protected void SetUp()
-		{
 			TmpFolder = System.IO.Path.GetRandomFileName();
 
 			// TODO: Create with API directly
@@ -42,8 +36,7 @@ namespace DocumentSync.Test
 			*/
 		}
 
-		[TearDown]
-		protected void Cleanup()
+		public void Dispose()
 		{
 			Console.WriteLine("Removing {0}", Root.Id);
 			// TODO: Remove with API directly
@@ -54,7 +47,7 @@ namespace DocumentSync.Test
 		{
 		}
 
-		[Test]
+		[Fact]
 		public void TestCreate()
 		{
 			// Test path creation starting at root.
@@ -72,7 +65,7 @@ namespace DocumentSync.Test
 			DocumentStore.Create(System.IO.Path.Combine(TmpFolder, "FileC"), DocumentType.File);
 		}
 
-		[Test]
+		[Fact]
 		public void TestDelete()
 		{
 			var root = DocumentStore.GetByPath(TmpFolder);
@@ -81,7 +74,7 @@ namespace DocumentSync.Test
 			DocumentStore.Delete(file);
 		}
 
-		[Test]
+		[Fact]
 		public void TestMoveTo_IDocument()
 		{
 			throw new Exception("stub");
@@ -89,13 +82,13 @@ namespace DocumentSync.Test
 
 		}
 
-		[Test]
+		[Fact]
 		public void TestMoveTo_String()
 		{ 
 			throw new Exception("stub");
 		}
 
-		[Test]
+		[Fact]
 		public void GetByID()
 		{
 			IDocument document;
@@ -107,7 +100,7 @@ namespace DocumentSync.Test
 			});
 		}
 
-		[Test]
+		[Fact]
 		public void TestEventClassification()
 		{
 			DocumentChangeType eventType = DocumentChangeType.Changed;
@@ -153,7 +146,7 @@ namespace DocumentSync.Test
 			*/
 		}
 
-		[Test]
+		[Fact]
 		public void TestDocumentCache()
 		{
 			var dbname = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
@@ -183,12 +176,12 @@ namespace DocumentSync.Test
 			}
 		}
 
-		[Test]
+		[Fact]
 		public void TestDriveList()
 		{
 		}
 
-		[Test]
+		[Fact]
 		public void DriveWatcher()
 		{
 			var root = DocumentStore.GetByPath(TmpFolder);

@@ -1,17 +1,16 @@
-﻿using NUnit.Framework;
-
-using System;
-using System.IO;
-using Google.Apis.Auth.OAuth2;
+﻿using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Util.Store;
+using System;
+using System.IO;
+using Xunit;
 
 namespace DocumentSync.Test
 {
-	public class TestFileSystemDocumentStore
+	public class TestFileSystemDocumentStore : IDisposable
 	{
-		Moq.Mock<DriveService> mockDriveService;
+		// Moq.Mock<DriveService> mockDriveService;
 		string TmpFolder;
 		DirectoryInfo Root;
 		FileSystemDocumentStore DocumentStore;
@@ -19,19 +18,14 @@ namespace DocumentSync.Test
 		public TestFileSystemDocumentStore()
 		{
 			DocumentStore = new FileSystemDocumentStore("/");
-		}
 
-		[SetUp]
-		protected void SetUp()
-		{
 			TmpFolder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
 			Root = new DirectoryInfo(TmpFolder);
 			Console.WriteLine("Creating {0}", Root.FullName);
 			Root.Create();
 		}
 
-		[TearDown]
-		protected void Cleanup()
+		public void Dispose()
 		{
 			Console.WriteLine("Removing {0}", Root.FullName);
 			Root.Delete(true);
@@ -41,7 +35,7 @@ namespace DocumentSync.Test
 		{
 		}
 
-		[Test]
+		[Fact]
 		public void TestCreate()
 		{
 			var root  = DocumentStore.GetById(TmpFolder);
@@ -58,7 +52,7 @@ namespace DocumentSync.Test
 			VerifyDocument(DocumentStore.Create(System.IO.Path.Combine(TmpFolder, "SubA/FileA"), DocumentType.File));
 		}
 
-		[Test]
+		[Fact]
 		public void TestDelete()
 		{
 			var root = DocumentStore.GetById(TmpFolder);
@@ -67,7 +61,7 @@ namespace DocumentSync.Test
 			DocumentStore.Delete(file);
 		}
 
-		[Test]
+		[Fact]
 		public void TestMoveTo_IDocument()
 		{
 			throw new Exception("stub");
@@ -75,13 +69,13 @@ namespace DocumentSync.Test
 
 		}
 
-		[Test]
+		[Fact]
 		public void TestMoveTo_String()
 		{
 			throw new Exception("stub");
 		}
 
-		[Test]
+		[Fact]
 		public void GetById()
 		{
 			DocumentStore.GetById(TmpFolder);
