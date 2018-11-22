@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 
-namespace DocumentSync
-{
-    public class FileSystemDocument : IDocument
-    {
+namespace DocumentSync {
+    public class FileSystemDocument : IDocument {
         public IDocumentStore Owner { get; private set; }
         // FileSystemDocumentStore Owner { get; set; }
         FileSystemInfo Document { get; set; }
@@ -14,8 +12,7 @@ namespace DocumentSync
         FileInfo FileInfo { get { return Document as FileInfo; } set { Document = value; } }
         DirectoryInfo DirectoryInfo { get { return Document as DirectoryInfo; } set { Document = value; } }
 
-        internal FileSystemDocument(FileSystemDocumentStore owner, FileSystemInfo fsi)
-        {
+        internal FileSystemDocument(FileSystemDocumentStore owner, FileSystemInfo fsi) {
             Owner = owner;
             Document = fsi;
         }
@@ -42,8 +39,7 @@ namespace DocumentSync
             return FileInfo.OpenText();
         }
 
-        public Stream OpenRead()
-        {
+        public Stream OpenRead() {
             return FileInfo.OpenRead();
         }
 
@@ -60,8 +56,8 @@ namespace DocumentSync
         }
 
         public System.Collections.IEnumerable Children {
-                get { throw new Exception("stub"); }
-            }
+            get { throw new Exception("stub"); }
+        }
 
         public string Md5Checksum {
             get { return CalculateMd5Sum(); }
@@ -75,15 +71,15 @@ namespace DocumentSync
                         var hash = md5hash.ComputeHash(stream);
                         _Md5Checksum = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
                     }
-                } else {
+                }
+                else {
                     _Md5Checksum = "d41d8cd98f00b204e9800998ecf8427e";
                 }
             }
             return _Md5Checksum;
         }
 
-        public void Update(System.IO.Stream stream)
-        {
+        public void Update(System.IO.Stream stream) {
             using (var fp = FileInfo.Create()) {
                 stream.CopyTo(fp);
             }
@@ -93,18 +89,15 @@ namespace DocumentSync
             FileInfo.LastWriteTime = value;
         }
 
-        public void Delete()
-        {
+        public void Delete() {
             throw new NotImplementedException("File Modifications not implemented");
         }
     }
 
-    public class FileSystemDocumentStore : DocumentStore
-    {
-        string Root { get; set;  }
+    public class FileSystemDocumentStore : DocumentStore {
+        string Root { get; set; }
 
-        public FileSystemDocumentStore(string root)
-        {
+        public FileSystemDocumentStore(string root) {
             if (System.IO.Directory.Exists(root)) {
                 // TOOD: If not a document store get explicit permission
                 // throw new Exception("Directory exists");
@@ -115,8 +108,7 @@ namespace DocumentSync
             Root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
         }
 
-        public override IDocument Create(string path, DocumentType type)
-        {
+        public override IDocument Create(string path, DocumentType type) {
             path = Path.Combine(Root, path);
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
@@ -124,8 +116,7 @@ namespace DocumentSync
             return Create(GetByPath(head), tail, type);
         }
 
-        public override IDocument Create(IDocument parent, string name, DocumentType type)
-        {
+        public override IDocument Create(IDocument parent, string name, DocumentType type) {
             FileSystemInfo fsi;
             var path = MakeAbsolute(Path.Combine(parent.FullName, name));
             Console.WriteLine("Creating {0}", path);
@@ -147,8 +138,7 @@ namespace DocumentSync
             return new FileSystemDocument(this, fsi);
         }
 
-        public override void Delete(IDocument arg0)
-        {
+        public override void Delete(IDocument arg0) {
             if (arg0.IsFile)
                 File.Delete(arg0.FullName);
 
@@ -159,28 +149,24 @@ namespace DocumentSync
         public override void Copy(IDocument src, IDocument dst) {
             // TODO: Set attributes
 
-            using(var fp = src.OpenRead()) {
+            using (var fp = src.OpenRead()) {
                 dst.Update(fp);
             }
         }
 
-        public override void MoveTo(IDocument src, IDocument dst)
-        {
+        public override void MoveTo(IDocument src, IDocument dst) {
             throw new NotImplementedException();
         }
-        public override void MoveTo(IDocument src, string name)
-        {
+        public override void MoveTo(IDocument src, string name) {
             throw new NotImplementedException();
         }
 
-        public override IDocument GetById(string id)
-        {
+        public override IDocument GetById(string id) {
             // For now, id and Path are the same.
             return GetByPath(id);
         }
 
-        public override IDocument GetByPath(string path)
-        {
+        public override IDocument GetByPath(string path) {
             var absPath = MakeAbsolute(path);
             FileSystemInfo fi;
             if (System.IO.Directory.Exists(absPath))
@@ -193,8 +179,7 @@ namespace DocumentSync
             return new FileSystemDocument(this, fi);
         }
 
-        public override DocumentWatcher Watch()
-        {
+        public override DocumentWatcher Watch() {
             return new FileSystemDocumentWatcher();
         }
 
@@ -202,7 +187,7 @@ namespace DocumentSync
          * TODO: Likely to break on large file counts
          */
         public override IEnumerator<IDocument> GetEnumerator() {
-            foreach(var item in Directory.EnumerateFileSystemEntries(Root, "*", SearchOption.AllDirectories))  {
+            foreach (var item in Directory.EnumerateFileSystemEntries(Root, "*", SearchOption.AllDirectories)) {
                 yield return LoadDocument(item);
             }
         }
@@ -212,7 +197,8 @@ namespace DocumentSync
             if (Directory.Exists(path)) {
                 return new FileSystemDocument(this, new DirectoryInfo(path));
 
-            } else if (File.Exists(path)) {
+            }
+            else if (File.Exists(path)) {
                 return new FileSystemDocument(this, new FileInfo(path));
             }
 
@@ -233,12 +219,10 @@ namespace DocumentSync
         }
     }
 
-    public class FileSystemDocumentWatcher : DocumentWatcher
-    {
+    public class FileSystemDocumentWatcher : DocumentWatcher {
         Queue<EventArgs> SyncQueue { get; set; }
 
-        internal FileSystemDocumentWatcher()
-        {
+        internal FileSystemDocumentWatcher() {
             /*
             var timer = new System.Timers.Timer(5000);
             timer.AutoReset = true;
@@ -259,12 +243,10 @@ namespace DocumentSync
             */
         }
 
-        public override DocumentEventArgs Classify(IDocument change)
-        {
+        public override DocumentEventArgs Classify(IDocument change) {
             throw new NotImplementedException();
         }
-        private void OnChanged(object source, FileSystemEventArgs e)
-        {
+        private void OnChanged(object source, FileSystemEventArgs e) {
             lock (SyncQueue) {
                 /*
                 try {
@@ -305,8 +287,7 @@ namespace DocumentSync
             }
         }
 
-        private void OnRenamed(object source, RenamedEventArgs e)
-        {
+        private void OnRenamed(object source, RenamedEventArgs e) {
             /*
             lock (SyncQueue) {
                 Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);

@@ -4,32 +4,27 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace DocumentSync
-{
-    public class DocumentException : Exception
-    {
+namespace DocumentSync {
+    public class DocumentException : Exception {
     }
 
-    public class DocumentDoesNotExistException : DocumentException
-    {
+    public class DocumentDoesNotExistException : DocumentException {
     }
 
-    public enum DocumentType
-    {
+    public enum DocumentType {
         File,
         Directory,
         Link,
     }
 
-    public interface IDocument
-    {
+    public interface IDocument {
         IDocumentStore Owner { get; }
         string Id { get; }
         string Name { get; }
         string FullName { get; }
         DateTime CreatedTime { get; }
-        DateTime ModifiedTime { get; set;}
-        long Size { get;  }
+        DateTime ModifiedTime { get; set; }
+        long Size { get; }
         long Version { get; }
 
         bool Deleted { get; }
@@ -54,16 +49,13 @@ namespace DocumentSync
         void Delete();
     }
 
-    public interface IDocumentEnumerable : IEnumerable<IDocument>
-    {
+    public interface IDocumentEnumerable : IEnumerable<IDocument> {
     }
 
-    public interface IDocumentEnumerator : IEnumerator<IDocument>
-    {
+    public interface IDocumentEnumerator : IEnumerator<IDocument> {
     }
 
-    public interface IDocumentStore : IEnumerable<IDocument>
-    {
+    public interface IDocumentStore : IEnumerable<IDocument> {
         IDocument CreateFile(string path, Stream stream);
         IDocument CreateFile(string path, string content);
         // IDocument CreateFile(IDocument parent, string name);
@@ -95,8 +87,7 @@ namespace DocumentSync
         DocumentWatcher Watch();
     }
 
-    public abstract class DocumentStore : IDocumentStore
-    {
+    public abstract class DocumentStore : IDocumentStore {
         public abstract IDocument Create(string path, DocumentType type);
         public abstract IDocument Create(IDocument parent, string name, DocumentType type);
         public IDocument CreateFile(string path, Stream stream) {
@@ -120,12 +111,14 @@ namespace DocumentSync
             DocumentType docType;
             if (src.IsDirectory) {
                 docType = DocumentType.Directory;
-            } else if (src.IsFile) {
+            }
+            else if (src.IsFile) {
                 docType = DocumentType.File;
-            } else { throw new NotImplementedException(); }
+            }
+            else { throw new NotImplementedException(); }
             var newDoc = Create(dst, docType);
             Copy(src, newDoc);
-            CopyMetadata (src, newDoc);
+            CopyMetadata(src, newDoc);
             return newDoc;
         }
         public void CopyMetadata(IDocument src, IDocument dst) {
@@ -201,8 +194,7 @@ namespace DocumentSync
         public abstract IEnumerator<IDocument> GetEnumerator();
     }
 
-    public enum DocumentChangeType
-    {
+    public enum DocumentChangeType {
         All,
         Changed,
         Created,
@@ -210,14 +202,12 @@ namespace DocumentSync
         Renamed
     }
 
-    public class DocumentEventArgs : EventArgs
-    {
+    public class DocumentEventArgs : EventArgs {
         public DocumentChangeType ChangeType { get; }
         public IDocument Document { get; }
         // public IDocument Original { get; }
 
-        public DocumentEventArgs(DocumentChangeType type, IDocument document)
-        {
+        public DocumentEventArgs(DocumentChangeType type, IDocument document) {
             ChangeType = type;
             Document = document;
         }
@@ -228,8 +218,7 @@ namespace DocumentSync
         DocumentEventArgs e
     );
 
-    public enum NotifyFilters
-    {
+    public enum NotifyFilters {
         Attributes,
         CreationTime,
         DirectoryName,

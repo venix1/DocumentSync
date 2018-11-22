@@ -9,15 +9,12 @@ using Google.Apis.Util.Store;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
-namespace DocumentSync
-{
-    public class GoogleDriveDocument : IDocument
-    {
+namespace DocumentSync {
+    public class GoogleDriveDocument : IDocument {
         public IDocumentStore Owner { get; private set; }
         internal DriveFile Document { get; set; }
 
-        internal GoogleDriveDocument(GoogleDriveDocumentStore owner, DriveFile document)
-        {
+        internal GoogleDriveDocument(GoogleDriveDocumentStore owner, DriveFile document) {
             Owner = owner;
             Document = document;
 
@@ -31,7 +28,7 @@ namespace DocumentSync
         public DateTime CreatedTime => Document.CreatedTime.GetValueOrDefault(DateTime.Now);
         public DateTime ModifiedTime {
             get => Document.ModifiedTime.GetValueOrDefault(DateTime.Now);
-            set => throw new NotImplementedException(); 
+            set => throw new NotImplementedException();
         }
         public long Version => Document.Version.GetValueOrDefault();
         public bool Deleted {
@@ -74,45 +71,38 @@ namespace DocumentSync
             throw new NotImplementedException();
         }
 
-        public Stream OpenRead()
-        {
+        public Stream OpenRead() {
             throw new NotImplementedException();
         }
 
-        public void Update(System.IO.Stream stream)
-        {
+        public void Update(System.IO.Stream stream) {
             throw new NotImplementedException(); // Owner.Update(this, stream);
         }
 
-        public void Delete()
-        {
+        public void Delete() {
             Owner.Delete(this);
         }
     }
 
-    public class GoogleDriveChangesEnumerable : IDocumentEnumerable
-    {
+    public class GoogleDriveChangesEnumerable : IDocumentEnumerable {
         Queue<GoogleDriveDocument> Changes { get; set; }
 
         GoogleDriveDocumentStore Owner { get; set; }
         public string StartPageToken { get; internal set; }
         public string SavedPageToken { get; internal set; }
 
-        internal GoogleDriveChangesEnumerable(GoogleDriveDocumentStore owner, string startPageToken)
-        {
+        internal GoogleDriveChangesEnumerable(GoogleDriveDocumentStore owner, string startPageToken) {
             Owner = owner;
             StartPageToken = startPageToken;
             SavedPageToken = StartPageToken;
             Changes = new Queue<GoogleDriveDocument>();
         }
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
-        {
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() {
             return GetEnumerator();
         }
 
-        public IEnumerator<IDocument> GetEnumerator()
-        {
+        public IEnumerator<IDocument> GetEnumerator() {
             if (Changes.Count <= 0) {
                 var pageToken = StartPageToken;
                 foreach (var change in Owner.Changes(ref pageToken)) {
@@ -128,8 +118,7 @@ namespace DocumentSync
         }
     }
 
-    public class GoogleDriveDocumentStore : DocumentStore
-    {
+    public class GoogleDriveDocumentStore : DocumentStore {
         static string[] Scopes = { DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadata };
         static string ApplicationName = "DocumentSync - Google Drive Plugin";
         static string ApplicationPath;
@@ -146,8 +135,7 @@ namespace DocumentSync
         public GoogleDocumentCache Cache { get; private set; }
         // Drive Id Cache
 
-        private void Initialize(DriveService driveService, String rootFolder)
-        {
+        private void Initialize(DriveService driveService, String rootFolder) {
             DriveService = driveService;
 
             Cache = new GoogleDocumentCache();
@@ -162,11 +150,10 @@ namespace DocumentSync
             if (root == null)
                 throw new Exception("Unable to get root Folder");
 
-            Root = (GoogleDriveDocument) root;
+            Root = (GoogleDriveDocument)root;
         }
 
-        public GoogleDriveDocumentStore(String rootFolder)
-        {
+        public GoogleDriveDocumentStore(String rootFolder) {
             ApplicationPath = Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Name
@@ -195,28 +182,24 @@ namespace DocumentSync
             Initialize(driveService, rootFolder);
         }
 
-        public GoogleDriveDocumentStore(DriveService driveService, String rootFolder)
-        {
+        public GoogleDriveDocumentStore(DriveService driveService, String rootFolder) {
             Initialize(driveService, rootFolder);
         }
 
-        protected GoogleDriveDocument EncapsulateDocument(DriveFile file)
-        {
+        protected GoogleDriveDocument EncapsulateDocument(DriveFile file) {
             // Update Cache
             // Update Index
             return new GoogleDriveDocument(this, file);
         }
 
-        public override IDocument Create(string path, DocumentType type)
-        {
+        public override IDocument Create(string path, DocumentType type) {
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
 
             return Create(GetByPath(head), tail, type);
         }
 
-        public override IDocument Create(IDocument parent, string name, DocumentType type)
-        {
+        public override IDocument Create(IDocument parent, string name, DocumentType type) {
             // Verify existence of Parent.
             var file = new DriveFile();
             file.Name = name;
@@ -238,8 +221,7 @@ namespace DocumentSync
             return new GoogleDriveDocument(this, file);
         }
 
-        public void Update(IDocument document, Stream stream)
-        {
+        public void Update(IDocument document, Stream stream) {
             var updateRequest = DriveService.Files.Update(null, document.Id, stream, "");
             updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
             updateRequest.Upload();
@@ -250,27 +232,24 @@ namespace DocumentSync
             // Return new Document;
         }
 
-        public override void Delete(IDocument arg0)
-        {
+        public override void Delete(IDocument arg0) {
             var deleteRequest = DriveService.Files.Delete(arg0.Id);
             Console.WriteLine(deleteRequest.Execute());
         }
 
-        public override void Copy(IDocument src, IDocument dst)
-        {
+        public override void Copy(IDocument src, IDocument dst) {
             throw new NotImplementedException();
         }
 
-        public override void MoveTo(IDocument src, IDocument dst)
-        {
-            throw new Exception("stub");
+        public override void MoveTo(IDocument src, IDocument dst) {
+
             if (dst.IsFile) {
                 // Overwrite
             }
             // Update Parent
+            throw new NotImplementedException();
         }
-        public override void MoveTo(IDocument src, string name)
-        {
+        public override void MoveTo(IDocument src, string name) {
             throw new Exception("stub");
             // Parse name as path
             // Does exist?
@@ -278,13 +257,11 @@ namespace DocumentSync
             // Is Directory?
         }
 
-        public override IEnumerator<IDocument> GetEnumerator()
-        {
+        public override IEnumerator<IDocument> GetEnumerator() {
             throw new NotImplementedException();
         }
 
-        public override IDocument GetById(string id)
-        {
+        public override IDocument GetById(string id) {
             // Check Cache First
             GoogleDriveDocument document;
             Cache.Documents.TryGetValue(id, out document);
@@ -294,7 +271,8 @@ namespace DocumentSync
 
                 try {
                     document = EncapsulateDocument(resource.Execute());
-                } catch (Google.GoogleApiException e) {
+                }
+                catch (Google.GoogleApiException e) {
                     if (e.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
                         return null;
                 }
@@ -303,8 +281,7 @@ namespace DocumentSync
             return document;
         }
 
-        public override IDocument GetByPath(string path)
-        {
+        public override IDocument GetByPath(string path) {
             IDocument dir = GetById("root");
             if (String.IsNullOrEmpty(path) || path == "/") {
                 return dir;
@@ -335,8 +312,7 @@ namespace DocumentSync
             return dir;
         }
 
-        public string GetPath(IDocument document)
-        {
+        public string GetPath(IDocument document) {
             List<string> paths = new List<string>();
 
             IDocument parent = document;
@@ -349,8 +325,7 @@ namespace DocumentSync
             return System.IO.Path.Combine(paths.ToArray());
         }
 
-        public GoogleDriveChangesEnumerable GetChangeLog(string startPageToken = null)
-        {
+        public GoogleDriveChangesEnumerable GetChangeLog(string startPageToken = null) {
             string savedStartPageToken = startPageToken;
 
             if (startPageToken == null) {
@@ -363,8 +338,7 @@ namespace DocumentSync
         }
 
 
-        public List<GoogleDriveDocument> Changes(ref string pageToken)
-        {
+        public List<GoogleDriveDocument> Changes(ref string pageToken) {
             var list = new List<GoogleDriveDocument>();
             string newStartPageToken = null;
             while (pageToken != null) {
@@ -389,7 +363,8 @@ namespace DocumentSync
                             };
                             document = new GoogleDriveDocument(this, file);
                         }
-                    } else {
+                    }
+                    else {
                         document = new GoogleDriveDocument(this, change.File);
                         Cache.Add(document);
                     }
@@ -445,22 +420,19 @@ namespace DocumentSync
         }
         */
 
-        public override DocumentWatcher Watch()
-        {
+        public override DocumentWatcher Watch() {
             return new GoogleDriveDocumentWatcher(this);
         }
     }
 
-    public class GoogleDriveDocumentWatcher : DocumentWatcher
-    {
+    public class GoogleDriveDocumentWatcher : DocumentWatcher {
         private DateTime begin;
         private System.Threading.Thread PollThread { get; set; }
         private GoogleDriveDocumentStore Owner { get; set; }
 
         private GoogleDriveChangesEnumerable ChangeLog { get; set; }
 
-        internal GoogleDriveDocumentWatcher(GoogleDriveDocumentStore owner)
-        {
+        internal GoogleDriveDocumentWatcher(GoogleDriveDocumentStore owner) {
             Owner = owner;
             ChangeLog = Owner.GetChangeLog();
 
@@ -473,13 +445,11 @@ namespace DocumentSync
             PollThread.Start();
         }
 
-        ~GoogleDriveDocumentWatcher()
-        {
+        ~GoogleDriveDocumentWatcher() {
             PollThread.Abort();
         }
 
-        public override DocumentEventArgs Classify(IDocument change)
-        {
+        public override DocumentEventArgs Classify(IDocument change) {
             Console.WriteLine("{0} {1}", change.Id, change.FullName);
             Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
 
@@ -489,7 +459,8 @@ namespace DocumentSync
             if (!change.Exists || change.Trashed) {
                 //Console.WriteLine("Removed: {0} {1}", change.Id, change.FullName);
                 return new DocumentEventArgs(DocumentChangeType.Deleted, change);
-            } else {
+            }
+            else {
                 if (change.CreatedTime >= change.ModifiedTime)
                     return new DocumentEventArgs(DocumentChangeType.Created, change);
                 else
@@ -503,8 +474,7 @@ namespace DocumentSync
             }
         }
 
-        private void Check()
-        {
+        private void Check() {
             var events = new List<DocumentEventArgs>();
 
             foreach (var change in ChangeLog) {
@@ -542,4 +512,4 @@ namespace DocumentSync
             }
         }
     }
-    }
+}

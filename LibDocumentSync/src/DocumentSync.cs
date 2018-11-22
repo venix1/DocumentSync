@@ -2,14 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace DocumentSync
-{
-    public abstract class DocumentComparer : IEqualityComparer<IDocument>
-    {
+namespace DocumentSync {
+    public abstract class DocumentComparer : IEqualityComparer<IDocument> {
         abstract public bool Equals(IDocument x, IDocument y);
 
-        protected bool MetadataIsEqual(IDocument x, IDocument y)
-        {
+        protected bool MetadataIsEqual(IDocument x, IDocument y) {
             /*
             Console.WriteLine ("DocumentComparer:\n  {0} {1} {2}\n  {3} {4} {5}",
                 x.Name, x.Size, x.ModifiedTime,
@@ -21,50 +18,40 @@ namespace DocumentSync
                     x.ModifiedTime == y.ModifiedTime;
         }
 
-        protected bool ContentIsEqual(IDocument x, IDocument y)
-        {
+        protected bool ContentIsEqual(IDocument x, IDocument y) {
             return x.Name == y.Name &&
                     x.Size == y.Size &&
                     x.Md5Checksum == y.Md5Checksum;
         }
 
         /* HashCode is always consistent */
-        public int GetHashCode(IDocument obj)
-        {
+        public int GetHashCode(IDocument obj) {
             //Console.WriteLine ("HashCode: {0:X} {1}", obj.FullName.GetHashCode (), obj.FullName);
             return obj.FullName.GetHashCode();
         }
     }
-    public class FullDocumentComparer : DocumentComparer
-    {
-        override public bool Equals(IDocument x, IDocument y)
-        {
+    public class FullDocumentComparer : DocumentComparer {
+        override public bool Equals(IDocument x, IDocument y) {
             return ContentIsEqual(x, y);
         }
     }
-    public class FastDocumentComparer : DocumentComparer
-    {
-        override public bool Equals(IDocument x, IDocument y)
-        {
+    public class FastDocumentComparer : DocumentComparer {
+        override public bool Equals(IDocument x, IDocument y) {
             return MetadataIsEqual(x, y) || ContentIsEqual(x, y);
         }
     }
-    public class MetadataDocumentComparer : DocumentComparer
-    {
-        override public bool Equals(IDocument x, IDocument y)
-        {
+    public class MetadataDocumentComparer : DocumentComparer {
+        override public bool Equals(IDocument x, IDocument y) {
             return MetadataIsEqual(x, y);
         }
     }
-    public class NameOnlyDocumentComparer : DocumentComparer
-    {
-        override public bool Equals(IDocument x, IDocument y)
-        {
+    public class NameOnlyDocumentComparer : DocumentComparer {
+        override public bool Equals(IDocument x, IDocument y) {
             return x.FullName == y.FullName;
         }
     }
 
-    public class ConvergenceEventArgs : EventArgs{
+    public class ConvergenceEventArgs : EventArgs {
         public List<IDocument> MergeDocuments;
 
         public ConvergenceEventArgs(List<IDocument> merge) {
@@ -72,18 +59,15 @@ namespace DocumentSync
         }
     }
 
-    public class DocumentSync
-    {
+    public class DocumentSync {
         public EventHandler<ConvergenceEventArgs> Convergence;
         IDocumentStore[] DocumentStores { get; set; }
         IDocumentStore PrimaryDocumentStore { get; set; }
-        public DocumentSync(params IDocumentStore[] documents)
-        {
+        public DocumentSync(params IDocumentStore[] documents) {
             DocumentStores = documents;
         }
 
-        public void Converge()
-        {
+        public void Converge() {
             var files = new MultiValueDictionary<string, IDocument>();
             var toSync = new List<IDocument>();
 
@@ -112,8 +96,8 @@ namespace DocumentSync
                 Convergence?.Invoke(this, new ConvergenceEventArgs(toSync));
             }
 
-            foreach(var item in toSync) {
-                foreach(var store in DocumentStores) {
+            foreach (var item in toSync) {
+                foreach (var store in DocumentStores) {
 
                 }
             }
@@ -152,8 +136,7 @@ namespace DocumentSync
         }
 
 
-        private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e)
-        {
+        private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e) {
             /*
             try {
                 GetDriveChanges();
