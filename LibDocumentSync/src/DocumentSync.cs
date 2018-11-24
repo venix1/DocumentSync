@@ -61,19 +61,28 @@ namespace DocumentSync {
 
     public class DocumentSync {
         public EventHandler<ConvergenceEventArgs> Convergence;
-        IDocumentStore[] DocumentStores { get; set; }
-        IDocumentStore PrimaryDocumentStore { get; set; }
-        public DocumentSync(params IDocumentStore[] documents) {
-            DocumentStores = documents;
+        List<IDocumentStore> DocumentStores { get; set; }
+        IDocumentStoreFactory mDocumentStoreFactory;
+        public DocumentSync(params string[] backends) {
+            DocumentStores = new List<IDocumentStore>();
+            mDocumentStoreFactory = new DocumentStoreFactory();
+
+            foreach (var backend in backends) {
+                DocumentStores.Add(mDocumentStoreFactory.LoadDocumentStore(backend));
+            }
         }
 
         public void Converge() {
+            // Bootstrap watchers to catpure changes. 
+            // Perform initial sync
+            // Execute watchers to maintain sync
             var files = new MultiValueDictionary<string, IDocument>();
             var toSync = new List<IDocument>();
 
             // Extract all files from all stores.
             foreach (var store in DocumentStores) {
                 foreach (var document in store) {
+                    Console.WriteLine(document.FullName);
                     files.Add(document.FullName, document);
                 }
             }
@@ -92,47 +101,17 @@ namespace DocumentSync {
                         toSync.Add(items.OrderByDescending(i => i.ModifiedTime).First());
                     }
                 }
-
-                Convergence?.Invoke(this, new ConvergenceEventArgs(toSync));
             }
+            Convergence?.Invoke(this, new ConvergenceEventArgs(toSync));
 
             foreach (var item in toSync) {
                 foreach (var store in DocumentStores) {
-
-                }
-            }
-
-            // Map<string, List<IDocument>>
-            // Group same named files together
-            // If equal delete group
-
-            // if a full sync
-            //var unique = files.Distinct(new FullDocumentComparer());
-            // else fast
-            //var unique = files.Distinct(new FastDocumentComparer());
-
-            // Check metadata inconsistencies(Name, Size, Md5 but not ModifiedTime)
-            // var metaUpdates = files.Distinct(new MetadataDocumentComparer());
-
-            /*
-            var conflicts = unique.Distinct(new NameOnlyDocumentComparer());
-            if (conflicts.Count() > 0)  {
-                foreach(var file in conflicts)
-                Console.WriteLine(file.FullName);
-                throw new NotImplementedException("Unable to handle conflicts");
-            }
-            */
-
-            /*
-            foreach(var file in unique) {
-                foreach(var store in DocumentStores) {
-                    if (file.Owner != store) {
-                        Console.WriteLine ("Cloning unique file {0}", file.FullName);
-                        //store.Clone (file, file.FullName);
+                    if (item.Owner == store) {
+                        continue;
                     }
+                    store.CreateFile(item.FullName, item.OpenRead());
                 }
             }
-            */
         }
 
 
