@@ -1,6 +1,8 @@
 # Autosave files
 *~
 
+client_secret.json
+
 # build
 [Oo]bj/
 [Bb]in/
