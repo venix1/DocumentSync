@@ -73,16 +73,15 @@ namespace DocumentSync {
         void MoveTo(IDocument src, IDocument dst);
         void MoveTo(IDocument src, string name);
 
+        void Update(IDocument src, Stream data);
         void Copy(IDocument src, IDocument dst);
         IDocument Clone(IDocument src, string dst);
 
         IDocument GetById(string id);
         IDocument GetByPath(string path);
 
-        IEnumerable<IDocument> GetContents(IDocument document);
         IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories);
-
-        IEnumerable<IDocument> List();
+        IEnumerable<IDocument> List(IDocument document=null);
 
         DocumentWatcher Watch();
     }
@@ -91,6 +90,7 @@ namespace DocumentSync {
         public abstract IDocument Create(string path, DocumentType type);
         public abstract IDocument Create(IDocument parent, string name, DocumentType type);
         public IDocument CreateFile(string path, Stream stream) {
+            Console.WriteLine("Creating {0}", path);
             var document = Create(path, DocumentType.File);
             document.Update(stream);
             return document;
@@ -99,6 +99,7 @@ namespace DocumentSync {
             var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
             return CreateFile(path, stream);
         }
+        public abstract void Update(IDocument src, Stream stream);
         public abstract void Copy(IDocument src, IDocument dst);
         public abstract void Delete(IDocument arg0);
         public abstract IDocument GetById(string id);
@@ -126,61 +127,13 @@ namespace DocumentSync {
         }
 
         /** Naive implememntation.  Can be optimized per Store as required **/
-        public IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories) {
-            throw new NotImplementedException();
+        abstract public IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories);
 
-            /*
-                    public IEnumerable<IDocument> EnumerateFiles(string path, string filter, SearchOption options = SearchOption.TopDirectoryOnly)
-        {
-            var document = GetByPath(path);
-            if (!document.IsDirectory)
-                throw new Exception("Not a directory");
-
-            var regex = new Regex(filter);
-
-            var dirs = new Queue<IDocument>();
-
-            do {
-                foreach(var doc in GetContents(document)) {
-                    if (doc.IsDirectory)
-                        dirs.Enqueue(doc);
-
-                    if (regex.Matches(doc.Name).Count > 0)
-                        yield return doc;
-                }
-                if (dirs.Count > 0)
-                    document = dirs.Dequeue();
-                else
-                    document = null;
-
-            } while (options != SearchOption.TopDirectoryOnly && document != null);
-        }
-
-*/
-        }
         // TODO: Refactor out and use IDocument for implementation
         public IEnumerable<IDocument> GetContents(IDocument document) {
-            // return document.GetEnumerator();
-            /*
-                    public IEnumerable<IDocument> GetContents(IDocument document)
-        {
-            FilesResource.ListRequest listRequest = DriveService.Files.List();
-            listRequest.PageSize = 10;
-            listRequest.Fields = String.Format("nextPageToken, files({0})", RequiredFields);
-            listRequest.Q = String.Format("'{0}' in parents and trashed != true", document.Id);
-
-            do {
-                FileList files = listRequest.Execute();
-                listRequest.PageToken = files.NextPageToken;
-                foreach (var file in files.Files) {
-                    yield return new GoogleDriveDocument(this, file);
-                }
-            } while (!String.IsNullOrEmpty(listRequest.PageToken));
-        }
-        */
             throw new NotImplementedException();
         }
-        public IEnumerable<IDocument> List() {
+        public IEnumerable<IDocument> List(IDocument document=null) {
             /*
              * 			foreach (var document in EnumerateFiles("/", "", SearchOption.AllDirectories)) {
                 yield return document;
