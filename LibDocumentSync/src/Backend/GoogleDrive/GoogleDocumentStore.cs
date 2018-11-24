@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
@@ -9,7 +10,10 @@ using Google.Apis.Util.Store;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
-namespace DocumentSync {
+using System.Reflection;
+
+namespace DocumentSync.Backend.Google {
+
     public class GoogleDriveDocument : IDocument {
         public IDocumentStore Owner { get; private set; }
         internal DriveFile Document { get; set; }
@@ -18,7 +22,7 @@ namespace DocumentSync {
             Owner = owner;
             Document = document;
 
-            // FullName = Document.FulOwner.GetPath(this);
+            FullName = owner.GetPath(this);
         }
 
         public string Id => Document.Id;
@@ -56,14 +60,14 @@ namespace DocumentSync {
         public bool Trashed { get { return Document.Trashed.GetValueOrDefault(false); } }
         public bool Exists { get { return Owner.GetById(Document.Id) != null; } }
         //public bool IsDirectory { get { return Document.MimeType == Owner.DirectoryType; } }
-        public bool IsDirectory => throw new NotImplementedException();
+        public bool IsDirectory => Document.MimeType == GoogleDriveDocumentStore.DirectoryType; 
         public bool IsFile { get { return !IsDirectory; } }
 
         public string Md5Checksum { get { return Document.Md5Checksum; } }
 
         public System.Collections.IEnumerable Children {
             get {
-                return Owner.GetContents(this);
+                return Owner.List(this);
             }
         }
 
@@ -75,12 +79,13 @@ namespace DocumentSync {
             throw new NotImplementedException();
         }
 
-        public void Update(System.IO.Stream stream) {
-            throw new NotImplementedException(); // Owner.Update(this, stream);
-        }
 
         public void Delete() {
             Owner.Delete(this);
+        }
+
+        public void Update(Stream stream) {
+            Owner.Update(this, stream);
         }
     }
 
@@ -118,12 +123,13 @@ namespace DocumentSync {
         }
     }
 
+    [DocumentStore("google")]
     public class GoogleDriveDocumentStore : DocumentStore {
         static string[] Scopes = { DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadata };
         static string ApplicationName = "DocumentSync - Google Drive Plugin";
         static string ApplicationPath;
 
-        public readonly string DirectoryType = "application/vnd.google-apps.folder";
+        public static readonly string DirectoryType = "application/vnd.google-apps.folder";
         public readonly string RequiredFields = "createdTime, id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
 
         UserCredential credential;
@@ -143,6 +149,7 @@ namespace DocumentSync {
             ChangeThread = new GoogleDriveDocumentWatcher(this);
             ChangeThread.EnableRaisingEvents = true;
 
+            Console.WriteLine(rootFolder);
             var root = GetById(rootFolder);
             if (root == null)
                 root = GetByPath(rootFolder);
@@ -162,7 +169,7 @@ namespace DocumentSync {
 
             // Authenticate
             using (var stream =
-                   System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("DocumentSync.client_secret.json")) {
+                   System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("LibDocumentSync.client_secret.json")) {
                 var credPath = Path.Combine(ApplicationPath, ".credentials/drive-dotnet-sync.json");
 
                 credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
@@ -174,7 +181,7 @@ namespace DocumentSync {
                 Console.WriteLine("Credential file saved to: " + credPath);
             }
 
-            var driveService = new DriveService(new Google.Apis.Services.BaseClientService.Initializer() {
+            var driveService = new DriveService(new global::Google.Apis.Services.BaseClientService.Initializer() {
                 HttpClientInitializer = credential,
                 ApplicationName = ApplicationName,
             });
@@ -193,6 +200,8 @@ namespace DocumentSync {
         }
 
         public override IDocument Create(string path, DocumentType type) {
+            path = Path.GetFullPath(Path.Combine(Root.FullName, "./" + path));
+
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
 
@@ -221,11 +230,12 @@ namespace DocumentSync {
             return new GoogleDriveDocument(this, file);
         }
 
-        public void Update(IDocument document, Stream stream) {
+        public override void Update(IDocument document, Stream stream) {
+            Console.WriteLine("Updating {0}", document.FullName);
             var updateRequest = DriveService.Files.Update(null, document.Id, stream, "");
             updateRequest.Fields = "id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
             updateRequest.Upload();
-            if (updateRequest.GetProgress().Status != Google.Apis.Upload.UploadStatus.Completed)
+            if (updateRequest.GetProgress().Status != global::Google.Apis.Upload.UploadStatus.Completed)
                 throw updateRequest.GetProgress().Exception;
 
             // TODO: Update DriveFile Cache
@@ -257,8 +267,48 @@ namespace DocumentSync {
             // Is Directory?
         }
 
+        internal IEnumerable<IDocument> GoogleFilesList(string q) {
+            FilesResource.ListRequest listRequest = DriveService.Files.List();
+            listRequest.PageSize = 10;
+            listRequest.Fields = String.Format("nextPageToken, files({0})", RequiredFields);
+            listRequest.Q = q;
+            Console.WriteLine(q);
+
+            do {
+                FileList files = listRequest.Execute();
+                listRequest.PageToken = files.NextPageToken;
+                foreach (var file in files.Files) {
+                    yield return new GoogleDriveDocument(this, file);
+                }
+            } while (!String.IsNullOrEmpty(listRequest.PageToken));
+        }
+
+        internal IEnumerable<IDocument> ListDirectory(IDocument d) {
+            return GoogleFilesList(String.Format("'{0}' in parents", d.Id));
+        }
+
+        public override IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories) {
+            var document = GetByPath(path);
+            return GoogleFilesList(String.Format("'{0}' in parents and trashed != true", document.Id));
+        }
+
         public override IEnumerator<IDocument> GetEnumerator() {
-            throw new NotImplementedException();
+            Console.WriteLine(Root.FullName);
+            string pageToken = null;
+            do {
+                var request = DriveService.Files.List();
+
+                request.Q = String.Format("'{0}' in parents", Root.Id);
+                request.Fields = "nextPageToken, files(id, name)";
+                request.PageToken = pageToken;
+                var result = request.Execute();
+
+                foreach (var file in result.Files) {
+                    yield return GetById(file.Id);
+                }
+
+                pageToken = result.NextPageToken;
+            } while (pageToken != null);
         }
 
         public override IDocument GetById(string id) {
@@ -272,7 +322,7 @@ namespace DocumentSync {
                 try {
                     document = EncapsulateDocument(resource.Execute());
                 }
-                catch (Google.GoogleApiException e) {
+                catch (global::Google.GoogleApiException e) {
                     if (e.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
                         return null;
                 }
@@ -293,20 +343,24 @@ namespace DocumentSync {
             };
             var paths = path.Split(separators, StringSplitOptions.RemoveEmptyEntries);
 
-            foreach (var folder in paths) {
-                if (!dir.IsDirectory)
-                    throw new Exception("Path not a directory");
 
-                bool found = false;
-                foreach (IDocument file in dir.Children) {
-                    if (file.Name == folder) {
-                        found = true;
-                        dir = file;
-                        break;
-                    }
+            foreach (var folder in paths) {
+                if (folder == "My Drive"){
+                    continue;
                 }
-                if (!found)
-                    throw new Exception("Path not found");
+
+                var results = GoogleFilesList(String.Format("'{0}' in parents and name = '{1}'", dir.Id, folder)).ToArray();
+
+                if (results.Length > 1) {
+                    throw new NotImplementedException("Multiple files with same name");
+                }
+                if (results.Length != 1) {
+                    throw new FileNotFoundException("File not found");
+                }
+
+                dir = results[0];
+                if (!dir.IsDirectory)
+                    throw new DirectoryNotFoundException("File is not a directory");
             }
 
             return dir;
