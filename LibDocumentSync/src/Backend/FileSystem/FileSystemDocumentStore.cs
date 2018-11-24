@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 
-namespace DocumentSync {
+namespace DocumentSync.Backend.FileSystem {
+
     public class FileSystemDocument : IDocument {
         public IDocumentStore Owner { get; private set; }
         // FileSystemDocumentStore Owner { get; set; }
@@ -94,6 +95,7 @@ namespace DocumentSync {
         }
     }
 
+    [DocumentStore("fs")]
     public class FileSystemDocumentStore : DocumentStore {
         string Root { get; set; }
 
@@ -192,6 +194,10 @@ namespace DocumentSync {
             }
         }
 
+        public override IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories) {
+            throw new NotImplementedException();
+        }
+
         private FileSystemDocument LoadDocument(string path) {
             // Cache Lookups
             if (Directory.Exists(path)) {
@@ -216,6 +222,10 @@ namespace DocumentSync {
          */
         internal string MakeRelative(string path) {
             return path.Substring(Root.Length);
+        }
+
+        public override void Update(IDocument src, Stream stream) {
+            throw new NotImplementedException();
         }
     }
 
