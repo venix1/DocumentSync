@@ -1,18 +1,21 @@
-namespace DocumentSync {
-    using Microsoft.EntityFrameworkCore;
-    using System.Collections.Generic;
-    using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
 
+namespace DocumentSync.Backend.Google {
     public class GoogleDocumentCache : DbContext {
         public Dictionary<string, GoogleDriveDocument> Documents { get; protected set; }
         public DbSet<GoogleDocumentIndex> DocumentIndex { get; set; }
 
+        public GoogleDocumentCache() {
+            Initialize();
+        }
         private void Initialize() {
             Documents = new Dictionary<string, GoogleDriveDocument>();
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {
-            optionsBuilder.UseSqlite("Data Source=goole_drive.db");
+            optionsBuilder.UseSqlite("Data Source=google_drive.db");
         }
 
 
