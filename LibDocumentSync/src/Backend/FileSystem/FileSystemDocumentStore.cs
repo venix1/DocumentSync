@@ -97,7 +97,10 @@ namespace DocumentSync.Backend.FileSystem {
 
     [DocumentStore("fs")]
     public class FileSystemDocumentStore : DocumentStore {
-        string Root { get; set; }
+        FileSystemDocument mRoot;
+        public string RootPath { get; private set; }
+
+        public override IDocument Root => mRoot;
 
         public FileSystemDocumentStore(string root) {
             if (System.IO.Directory.Exists(root)) {
@@ -107,11 +110,16 @@ namespace DocumentSync.Backend.FileSystem {
             else {
                 Directory.CreateDirectory(root);
             }
-            Root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+            RootPath = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+            mRoot = (FileSystemDocument)GetByPath(RootPath);
+        }
+
+        public override Stream Open(IDocument document, System.IO.FileMode mode) {
+            throw new NotImplementedException();
         }
 
         public override IDocument Create(string path, DocumentType type) {
-            path = Path.Combine(Root, path);
+            path = Path.Combine(RootPath, path);
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
 
@@ -148,14 +156,6 @@ namespace DocumentSync.Backend.FileSystem {
                 Directory.Delete(arg0.FullName, true);
         }
 
-        public override void Copy(IDocument src, IDocument dst) {
-            // TODO: Set attributes
-
-            using (var fp = src.OpenRead()) {
-                dst.Update(fp);
-            }
-        }
-
         public override void MoveTo(IDocument src, IDocument dst) {
             throw new NotImplementedException();
         }
@@ -176,25 +176,25 @@ namespace DocumentSync.Backend.FileSystem {
             else if (System.IO.File.Exists(absPath))
                 fi = new FileInfo(absPath);
             else
-                throw new Exception("File does not exist.");
+                return null;
 
             return new FileSystemDocument(this, fi);
         }
 
         public override DocumentWatcher Watch() {
-            return new FileSystemDocumentWatcher();
+            return new FileSystemDocumentWatcher(this);
         }
 
         /*
          * TODO: Likely to break on large file counts
          */
         public override IEnumerator<IDocument> GetEnumerator() {
-            foreach (var item in Directory.EnumerateFileSystemEntries(Root, "*", SearchOption.AllDirectories)) {
+            foreach (var item in Directory.EnumerateFileSystemEntries(RootPath, "*", SearchOption.AllDirectories)) {
                 yield return LoadDocument(item);
             }
         }
 
-        public override IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories) {
+        public override IEnumerable<IDocument> EnumerateFiles(IDocument path, string filter = "*", SearchOption options = SearchOption.AllDirectories) {
             throw new NotImplementedException();
         }
 
@@ -215,95 +215,131 @@ namespace DocumentSync.Backend.FileSystem {
          * Translates Document path to Filesystem Path
          */
         internal string MakeAbsolute(string path) {
-            return Path.GetFullPath(Path.Combine(Root, "." + Path.DirectorySeparatorChar + path));
+            return Path.GetFullPath(Path.Combine(RootPath, "." + Path.DirectorySeparatorChar + path));
         }
         /**
          * Translates Filesystem path to Document path
          */
         internal string MakeRelative(string path) {
-            return path.Substring(Root.Length);
+            return path.Substring(RootPath.Length);
         }
 
         public override void Update(IDocument src, Stream stream) {
             throw new NotImplementedException();
         }
+        public override void Update(IDocument document) {
+            // Does nothing? Answer the question Should Documents have
+            // throw new NotImplementedException();
+            // FileInfo.LastWriteTime = document.LastWriteTime;
+        }
     }
 
     public class FileSystemDocumentWatcher : DocumentWatcher {
-        Queue<EventArgs> SyncQueue { get; set; }
+        private FileSystemDocumentStore Owner { get; set; }
+        private List<DocumentEventArgs> Events { get; set; }
+        private FileSystemWatcher Watcher { get; set; }
 
-        internal FileSystemDocumentWatcher() {
-            /*
-            var timer = new System.Timers.Timer(5000);
-            timer.AutoReset = true;
-            timer.Elapsed += ProcessQueue;
-            timer.Start();
+        internal FileSystemDocumentWatcher(FileSystemDocumentStore owner) {
+            Owner = owner;
+            Events = new List<DocumentEventArgs>();
 
-            FileSystemWatcher watcher = new FileSystemWatcher();
-            watcher.Path = Root.Inode.FullName;
-            watcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName;
-            watcher.Filter = "";
+            Watcher = new FileSystemWatcher();
+            Watcher.Path = Owner.RootPath;
+            Watcher.NotifyFilter = System.IO.NotifyFilters.LastWrite
+                | System.IO.NotifyFilters.FileName
+                | System.IO.NotifyFilters.DirectoryName;
+            Watcher.Filter = "";
+            Watcher.Changed += OnFileChanged;
 
-            watcher.Changed += new FileSystemEventHandler(OnChanged);
-            watcher.Created += new FileSystemEventHandler(OnChanged);
-            watcher.Deleted += new FileSystemEventHandler(OnChanged);
-            watcher.Renamed += new RenamedEventHandler(OnRenamed);
+            Watcher.Created += OnFileCreated;
+            Watcher.Deleted += OnFileDeleted;
+            Watcher.Renamed += OnFileRenamed;
 
-            watcher.EnableRaisingEvents = true;
-            */
+
+            Watcher.EnableRaisingEvents = true;
+
+            // Thread instead of Timer for precision
+            PollThread = new System.Threading.Thread(() => {
+                Console.WriteLine("Watching {0} Event Loop {1}", Owner, Watcher.Path);
+                var begin = DateTime.UtcNow;
+                while (true) {
+                    Check();
+
+                    var sleepTime = 5000 - (int)(DateTime.UtcNow - begin).TotalMilliseconds;
+                    if (sleepTime > 0)
+                        System.Threading.Thread.Sleep(sleepTime);
+                    begin = DateTime.UtcNow;
+                }
+
+            });
+            PollThread.Start();
+        }
+        ~FileSystemDocumentWatcher() {
+            PollThread.Abort();
+        }
+
+        private void OnFileChanged(object source, FileSystemEventArgs e) {
+            Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
+            var path = e.FullPath.Substring(Owner.RootPath.Length);
+            var document = Owner.GetByPath(path);
+            var evt = new DocumentEventArgs(DocumentChangeType.Changed, document);
+            Events.Add(evt);
+        }
+        private void OnFileCreated(object source, FileSystemEventArgs e) {
+            Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
+            var path = e.FullPath.Substring(Owner.RootPath.Length);
+            var document = Owner.GetByPath(path);
+            var evt = new DocumentEventArgs(DocumentChangeType.Created, document);
+            Events.Add(evt);
+        }
+        private void OnFileDeleted(object source, FileSystemEventArgs e) {
+            Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
+            var path = e.FullPath.Substring(Owner.RootPath.Length);
+            var document = Owner.GetByPath(path);
+            var evt = new DocumentEventArgs(DocumentChangeType.Deleted, document);
+            Events.Add(evt);
+        }
+        private void OnFileRenamed(object source, RenamedEventArgs e) {
+            Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
+            var path = e.FullPath.Substring(Owner.RootPath.Length);
+            var document = Owner.GetByPath(path);
+            var evt = new DocumentEventArgs(DocumentChangeType.Renamed, document);
+
+            Events.Add(evt);
+        }
+
+        private void Check() {
+            Console.WriteLine("{0} event check {1} {2}", this, EnableRaisingEvents, PauseRaisingEvents);
+            if (!EnableRaisingEvents) {
+                Events.Clear();
+            }
+
+            if (PauseRaisingEvents)
+                return;
+
+            Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
+            // Dispatch Events
+            foreach (var e in Events) {
+                switch (e.ChangeType) {
+                    case DocumentChangeType.Created:
+                        Created?.Invoke(Owner, e);
+                        break;
+                    case DocumentChangeType.Changed:
+                        Changed?.Invoke(Owner, e);
+                        break;
+                    case DocumentChangeType.Deleted:
+                        Deleted?.Invoke(Owner, e);
+                        break;
+                    case DocumentChangeType.Renamed:
+                        Renamed?.Invoke(Owner, e);
+                        break;
+                }
+            }
+            Events.Clear();
         }
 
         public override DocumentEventArgs Classify(IDocument change) {
             throw new NotImplementedException();
-        }
-        private void OnChanged(object source, FileSystemEventArgs e) {
-            lock (SyncQueue) {
-                /*
-                try {
-                    Console.WriteLine("File: " + e.FullPath + " " + e.ChangeType);
-                    EventArgs syncEvent = null;
-                    UnifiedFile unifiedFile = GetUnifiedFile(e.FullPath);
-                    switch (e.ChangeType) {
-                        case WatcherChangeTypes.Changed:
-                            if (!System.IO.File.Exists(e.FullPath)) {
-                                Console.WriteLine("Out of Order event, Discarding");
-                                break;
-                            }
-                            syncEvent = new FileChangedEventArgs(unifiedFile);
-                            break;
-                        case WatcherChangeTypes.Created:
-                            if (!System.IO.File.Exists(e.FullPath)) {
-                                Console.WriteLine("Out of Order event, Discarding");
-                                break;
-                            }
-                            syncEvent = new FileCreatedEventArgs(unifiedFile);
-                            break;
-                        case WatcherChangeTypes.Deleted:
-                            if (System.IO.File.Exists(e.FullPath)) {
-                                Console.WriteLine("Out of Order event, Discarding");
-                                break;
-                            }
-                            syncEvent = new FileDeletedEventArgs(unifiedFile);
-                            break;
-                        default:
-                            throw new Exception("unhandled ChangeType");
-                    }
-                    if (syncEvent != null)
-                        SyncQueue.Enqueue(syncEvent);
-                } catch (Exception ex) {
-                    Console.WriteLine(ex);
-                }
-                */
-            }
-        }
-
-        private void OnRenamed(object source, RenamedEventArgs e) {
-            /*
-            lock (SyncQueue) {
-                Console.WriteLine("File: {0} renamed to {1}", e.OldFullPath, e.FullPath);
-                SyncQueue.Enqueue(new FileRenamedEventArgs(e.OldFullPath, GetUnifiedFile(e.FullPath)));
-            }
-            */
         }
     }
 }
