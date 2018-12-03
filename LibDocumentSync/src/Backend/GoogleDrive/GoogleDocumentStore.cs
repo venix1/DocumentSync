@@ -32,7 +32,9 @@ namespace DocumentSync.Backend.Google {
         public DateTime CreatedTime => Document.CreatedTime.GetValueOrDefault(DateTime.Now);
         public DateTime ModifiedTime {
             get => Document.ModifiedTime.GetValueOrDefault(DateTime.Now);
-            set => throw new NotImplementedException();
+            set {
+                Document.ModifiedTime = value; Owner.Update(this);
+            }
         }
         public long Version => Document.Version.GetValueOrDefault();
         public bool Deleted {
@@ -60,7 +62,7 @@ namespace DocumentSync.Backend.Google {
         public bool Trashed { get { return Document.Trashed.GetValueOrDefault(false); } }
         public bool Exists { get { return Owner.GetById(Document.Id) != null; } }
         //public bool IsDirectory { get { return Document.MimeType == Owner.DirectoryType; } }
-        public bool IsDirectory => Document.MimeType == GoogleDriveDocumentStore.DirectoryType; 
+        public bool IsDirectory => Document.MimeType == GoogleDriveDocumentStore.DirectoryType;
         public bool IsFile { get { return !IsDirectory; } }
 
         public string Md5Checksum { get { return Document.Md5Checksum; } }
@@ -76,7 +78,7 @@ namespace DocumentSync.Backend.Google {
         }
 
         public Stream OpenRead() {
-            throw new NotImplementedException();
+            return Owner.Open(this, System.IO.FileMode.Open);
         }
 
 
@@ -111,7 +113,8 @@ namespace DocumentSync.Backend.Google {
             if (Changes.Count <= 0) {
                 var pageToken = StartPageToken;
                 foreach (var change in Owner.Changes(ref pageToken)) {
-                    Changes.Enqueue(change);
+                    if (change.FullName.StartsWith(Owner.Root.FullName))
+                        Changes.Enqueue(change);
                 }
                 StartPageToken = pageToken;
             }
@@ -128,6 +131,7 @@ namespace DocumentSync.Backend.Google {
         static string[] Scopes = { DriveService.Scope.DriveFile, DriveService.Scope.DriveMetadata };
         static string ApplicationName = "DocumentSync - Google Drive Plugin";
         static string ApplicationPath;
+        static string CachePath;
 
         public static readonly string DirectoryType = "application/vnd.google-apps.folder";
         public readonly string RequiredFields = "createdTime, id, kind, mimeType, md5Checksum, modifiedTime, name, parents, size, version";
@@ -136,7 +140,11 @@ namespace DocumentSync.Backend.Google {
         DriveService DriveService;
         string savedStartPageToken;
 
-        GoogleDriveDocument Root;
+        GoogleDriveDocument mRoot;
+        string RootPath;
+        public override IDocument Root => mRoot;
+
+
         GoogleDriveDocumentWatcher ChangeThread { get; set; }
         public GoogleDocumentCache Cache { get; private set; }
         // Drive Id Cache
@@ -149,7 +157,7 @@ namespace DocumentSync.Backend.Google {
             ChangeThread = new GoogleDriveDocumentWatcher(this);
             ChangeThread.EnableRaisingEvents = true;
 
-            Console.WriteLine(rootFolder);
+            RootPath = rootFolder;
             var root = GetById(rootFolder);
             if (root == null)
                 root = GetByPath(rootFolder);
@@ -157,7 +165,7 @@ namespace DocumentSync.Backend.Google {
             if (root == null)
                 throw new Exception("Unable to get root Folder");
 
-            Root = (GoogleDriveDocument)root;
+            mRoot = (GoogleDriveDocument)root;
         }
 
         public GoogleDriveDocumentStore(String rootFolder) {
@@ -165,6 +173,8 @@ namespace DocumentSync.Backend.Google {
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Name
             );
+            CachePath = Path.Combine(ApplicationPath, "cache");
+            System.IO.Directory.CreateDirectory(CachePath);
             Console.WriteLine("Application Path: {0}", ApplicationPath);
 
             // Authenticate
@@ -196,15 +206,16 @@ namespace DocumentSync.Backend.Google {
         protected GoogleDriveDocument EncapsulateDocument(DriveFile file) {
             // Update Cache
             // Update Index
-            return new GoogleDriveDocument(this, file);
+            var document = new GoogleDriveDocument(this, file);
+            Cache.Add(document);
+            return document;
         }
 
         public override IDocument Create(string path, DocumentType type) {
-            path = Path.GetFullPath(Path.Combine(Root.FullName, "./" + path));
-
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
 
+            Console.WriteLine("Create: {0} {1}", head, tail);
             return Create(GetByPath(head), tail, type);
         }
 
@@ -216,18 +227,35 @@ namespace DocumentSync.Backend.Google {
             file.ModifiedTime = DateTime.Now;
 
             if (parent != null) {
-                var pfile = GetById(parent.Id);
-                file.Parents = new string[] { pfile.Id };
+                file.Parents = new string[] { parent.Id };
+            }
+            else {
+                file.Parents = new string[] { Root.Id };
             }
 
-            if (type == DocumentType.Directory)
+            if (type == DocumentType.Directory) {
                 file.MimeType = DirectoryType;
+            }
 
             var createRequest = DriveService.Files.Create(file);
             createRequest.Fields = RequiredFields;
             file = createRequest.Execute();
 
             return new GoogleDriveDocument(this, file);
+        }
+
+        public override void Update(IDocument src) {
+            var fileMetadata = new DriveFile() {
+                ModifiedTime = src.ModifiedTime
+            };
+
+            Console.WriteLine("Meta update {0} - ", src.FullName, src.Id);
+            var updateRequest = DriveService.Files.Update(fileMetadata, src.Id);
+            updateRequest.Fields = "id";
+            updateRequest.Execute();
+
+            // TODO: Update DriveFile Cache
+            // Return new Document;
         }
 
         public override void Update(IDocument document, Stream stream) {
@@ -247,7 +275,22 @@ namespace DocumentSync.Backend.Google {
             Console.WriteLine(deleteRequest.Execute());
         }
 
-        public override void Copy(IDocument src, IDocument dst) {
+        public override Stream Open(IDocument document, System.IO.FileMode mode) {
+            switch (mode) {
+                case System.IO.FileMode.Open:
+                    var tmpFile = Path.Combine(CachePath, document.Id);
+                    var fStream = System.IO.File.Open(tmpFile, FileMode.Create);
+                    Console.WriteLine("Opening {0}", tmpFile);
+                    var downloadRequest = DriveService.Files.Get(document.Id);
+                    var progress = downloadRequest.DownloadWithStatus(fStream);
+                    if (progress.Status != global::Google.Apis.Download.DownloadStatus.Completed)
+                        throw progress.Exception;
+                    fStream.Close();
+                    return System.IO.File.OpenRead(tmpFile);
+
+                default:
+                    throw new NotImplementedException();
+            }
             throw new NotImplementedException();
         }
 
@@ -278,37 +321,21 @@ namespace DocumentSync.Backend.Google {
                 FileList files = listRequest.Execute();
                 listRequest.PageToken = files.NextPageToken;
                 foreach (var file in files.Files) {
-                    yield return new GoogleDriveDocument(this, file);
+                    yield return EncapsulateDocument(file);
                 }
             } while (!String.IsNullOrEmpty(listRequest.PageToken));
         }
 
         internal IEnumerable<IDocument> ListDirectory(IDocument d) {
-            return GoogleFilesList(String.Format("'{0}' in parents", d.Id));
+            return GoogleFilesList(String.Format("'{0}' in parents and trashed != true", d.Id));
         }
 
-        public override IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories) {
-            var document = GetByPath(path);
-            return GoogleFilesList(String.Format("'{0}' in parents and trashed != true", document.Id));
+        public override IEnumerable<IDocument> EnumerateFiles(IDocument path, string filter = "8", SearchOption options = SearchOption.AllDirectories) {
+            return GoogleFilesList(String.Format("'{0}' in parents and trashed != true", path.Id));
         }
 
         public override IEnumerator<IDocument> GetEnumerator() {
-            Console.WriteLine(Root.FullName);
-            string pageToken = null;
-            do {
-                var request = DriveService.Files.List();
-
-                request.Q = String.Format("'{0}' in parents", Root.Id);
-                request.Fields = "nextPageToken, files(id, name)";
-                request.PageToken = pageToken;
-                var result = request.Execute();
-
-                foreach (var file in result.Files) {
-                    yield return GetById(file.Id);
-                }
-
-                pageToken = result.NextPageToken;
-            } while (pageToken != null);
+            return EnumerateFiles(Root).GetEnumerator();
         }
 
         public override IDocument GetById(string id) {
@@ -332,6 +359,8 @@ namespace DocumentSync.Backend.Google {
         }
 
         public override IDocument GetByPath(string path) {
+            path = MakeAbsolutePath(path);
+            Console.WriteLine(path);
             IDocument dir = GetById("root");
             if (String.IsNullOrEmpty(path) || path == "/") {
                 return dir;
@@ -344,22 +373,26 @@ namespace DocumentSync.Backend.Google {
             var paths = path.Split(separators, StringSplitOptions.RemoveEmptyEntries);
 
 
-            foreach (var folder in paths) {
-                if (folder == "My Drive"){
+            for (var i = 0; i < paths.Length; ++i) {
+                var folder = paths[i];
+
+                if (folder == "My Drive") {
                     continue;
                 }
 
-                var results = GoogleFilesList(String.Format("'{0}' in parents and name = '{1}'", dir.Id, folder)).ToArray();
+                var results = GoogleFilesList(String.Format("'{0}' in parents and name = '{1}' and trashed != true", dir.Id, folder)).ToArray();
 
                 if (results.Length > 1) {
                     throw new NotImplementedException("Multiple files with same name");
                 }
                 if (results.Length != 1) {
+                    return null;
                     throw new FileNotFoundException("File not found");
                 }
 
                 dir = results[0];
-                if (!dir.IsDirectory)
+                Console.WriteLine("{0} {1} {2} {3}", folder, dir.IsDirectory, i, paths.Length);
+                if (!dir.IsDirectory && i != (paths.Length - 1))
                     throw new DirectoryNotFoundException("File is not a directory");
             }
 
@@ -370,13 +403,19 @@ namespace DocumentSync.Backend.Google {
             List<string> paths = new List<string>();
 
             IDocument parent = document;
-            do {
+            while (parent != null) {
                 paths.Insert(0, parent.Name);
                 parent = parent.Parent;
-            } while (parent != null);
+            }
 
             paths.Insert(0, "/");
-            return System.IO.Path.Combine(paths.ToArray());
+
+            var path = System.IO.Path.Combine(paths.ToArray());
+            if (Root == null || Root.FullName.Length > path.Length)
+                return path;
+
+            // Console.WriteLine("GetPath: {0} {1}", Root.FullName, path);
+            return path.Substring(Root.FullName.Length);
         }
 
         public GoogleDriveChangesEnumerable GetChangeLog(string startPageToken = null) {
@@ -440,6 +479,13 @@ namespace DocumentSync.Backend.Google {
 
             return list;
         }
+
+        private string MakeAbsolutePath(string path) {
+            if (Root is null)
+                return path;
+            return Path.GetFullPath(Root.FullName + "/" + path);
+        }
+
         // Whatever is returned by this, should be recallable.
         // Return Closure, to maintain StartPageToken
         /*
@@ -480,21 +526,27 @@ namespace DocumentSync.Backend.Google {
     }
 
     public class GoogleDriveDocumentWatcher : DocumentWatcher {
-        private DateTime begin;
-        private System.Threading.Thread PollThread { get; set; }
         private GoogleDriveDocumentStore Owner { get; set; }
 
         private GoogleDriveChangesEnumerable ChangeLog { get; set; }
+        private List<DocumentEventArgs> Events { get; set; }
 
         internal GoogleDriveDocumentWatcher(GoogleDriveDocumentStore owner) {
             Owner = owner;
             ChangeLog = Owner.GetChangeLog();
+            Events = new List<DocumentEventArgs>();
 
             // Thread instead of Timer for precision
             PollThread = new System.Threading.Thread(() => {
-                begin = DateTime.UtcNow;
-                Check();
-                System.Threading.Thread.Sleep((5000 - (DateTime.UtcNow - begin).Milliseconds));
+                Console.WriteLine("Starting {0} Event Loop", Owner);
+                var begin = DateTime.UtcNow;
+                while (true) {
+                    Check();
+                    var sleepTime = 25000 - (int)(DateTime.UtcNow - begin).TotalMilliseconds;
+                    if (sleepTime > 0)
+                        System.Threading.Thread.Sleep(sleepTime);
+                    begin = DateTime.UtcNow;
+                }
             });
             PollThread.Start();
         }
@@ -520,7 +572,7 @@ namespace DocumentSync.Backend.Google {
                 else
                     return new DocumentEventArgs(DocumentChangeType.Changed, change);
                 // This may require a cache.
-                // events.Add(new DocumentEventArgs(DocumentChangeType.Renamed, change));
+                // events.Add(new DocumentEventArgs(DocumentChangeType.Renamed, changCopye));
                 /*
                     Console.WriteLine("{0} {1} {2}", syncEvent, change.FileId, (change.File != null) ? change.File.Name : null);
                     SyncQueue.Enqueue(syncEvent);
@@ -533,35 +585,38 @@ namespace DocumentSync.Backend.Google {
 
             foreach (var change in ChangeLog) {
                 events.Add(Classify(change));
+            }
 
-                // Collapse Events
-                if (!EnableRaisingEvents)
-                    return;
+            if (!EnableRaisingEvents) {
+                Events.Clear();
+            }
 
-                // Dispatch Events
-                foreach (var e in events) {
-                    switch (e.ChangeType) {
-                        case DocumentChangeType.Created:
-                            if (Created != null) {
-                                Created(this, e);
-                            }
-                            break;
-                        case DocumentChangeType.Changed:
-                            if (Changed != null) {
-                                Changed(this, e);
-                            }
-                            break;
-                        case DocumentChangeType.Deleted:
-                            if (Deleted != null) {
-                                Deleted(this, e);
-                            }
-                            break;
-                        case DocumentChangeType.Renamed:
-                            if (Renamed != null) {
-                                Renamed(this, e);
-                            }
-                            break;
-                    }
+            if (PauseRaisingEvents)
+                return;
+
+            // Dispatch Events
+            foreach (var e in events) {
+                switch (e.ChangeType) {
+                    case DocumentChangeType.Created:
+                        if (Created != null) {
+                            Created(this, e);
+                        }
+                        break;
+                    case DocumentChangeType.Changed:
+                        if (Changed != null) {
+                            Changed(this, e);
+                        }
+                        break;
+                    case DocumentChangeType.Deleted:
+                        if (Deleted != null) {
+                            Deleted(this, e);
+                        }
+                        break;
+                    case DocumentChangeType.Renamed:
+                        if (Renamed != null) {
+                            Renamed(this, e);
+                        }
+                        break;
                 }
             }
         }
