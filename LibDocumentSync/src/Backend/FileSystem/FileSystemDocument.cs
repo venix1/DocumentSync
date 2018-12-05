@@ -10,8 +10,8 @@ namespace DocumentSync.Backend.FileSystem {
         // FileSystemDocumentStore Owner { get; set; }
         FileSystemInfo Document { get; set; }
 
-        FileInfo FileInfo { get { return Document as FileInfo; } set { Document = value; } }
-        DirectoryInfo DirectoryInfo { get { return Document as DirectoryInfo; } set { Document = value; } }
+        internal FileInfo FileInfo { get { return Document as FileInfo; } set { Document = value; } }
+        internal DirectoryInfo DirectoryInfo { get { return Document as DirectoryInfo; } set { Document = value; } }
 
         internal FileSystemDocument(FileSystemDocumentStore owner, FileSystemInfo fsi) {
             Owner = owner;

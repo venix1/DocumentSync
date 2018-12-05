@@ -135,8 +135,12 @@ namespace DocumentSync.Backend.FileSystem {
         }
 
         public override void Update(IDocument src, Stream stream) {
-            throw new NotImplementedException();
+            var document = (FileSystemDocument)src;
+            using (var fp = document.FileInfo.Create()) {
+                stream.CopyTo(fp);
+            }
         }
+
         public override void Update(IDocument document) {
             // Does nothing? Answer the question Should Documents have
             // throw new NotImplementedException();

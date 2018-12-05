@@ -52,12 +52,14 @@ namespace DocumentSync.Backend.FileSystem {
             Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
             var path = e.FullPath.Substring(Owner.RootPath.Length);
             var document = Owner.GetByPath(path);
+            Console.WriteLine("-- {0} {1}", path, document.FullName);
             var evt = new DocumentEventArgs(DocumentChangeType.Changed, document);
             Events.Add(evt);
         }
         private void OnFileCreated(object source, FileSystemEventArgs e) {
             Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
             var path = e.FullPath.Substring(Owner.RootPath.Length);
+            Console.WriteLine("-- {0}", path);
             var document = Owner.GetByPath(path);
             var evt = new DocumentEventArgs(DocumentChangeType.Created, document);
             Events.Add(evt);
@@ -88,8 +90,11 @@ namespace DocumentSync.Backend.FileSystem {
                 return;
 
             Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
+
+            var events = Events;
+            Events = new List<DocumentEventArgs>();
             // Dispatch Events
-            foreach (var e in Events) {
+            foreach (var e in events) {
                 switch (e.ChangeType) {
                     case DocumentChangeType.Created:
                         Created?.Invoke(Owner, e);
@@ -105,7 +110,6 @@ namespace DocumentSync.Backend.FileSystem {
                         break;
                 }
             }
-            Events.Clear();
         }
 
         public override DocumentEventArgs Classify(IDocument change) {
