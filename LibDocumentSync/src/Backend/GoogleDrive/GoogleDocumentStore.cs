@@ -35,7 +35,7 @@ namespace DocumentSync.Backend.Google {
             if (Changes.Count <= 0) {
                 var pageToken = StartPageToken;
                 foreach (var change in Owner.Changes(ref pageToken)) {
-                    if (change.FullName.StartsWith(Owner.Root.FullName))
+
                         Changes.Enqueue(change);
                 }
                 StartPageToken = pageToken;
@@ -383,7 +383,17 @@ namespace DocumentSync.Backend.Google {
                         document = new GoogleDriveDocument(this, change.File);
                         Cache.Add(document);
                     }
-                    list.Add(document);
+
+                    {
+                        var parent = document;
+                        while( parent != null) {
+                            if (parent.Id == Root.Id)  {
+                                list.Add(document);
+                                break;
+                            }
+                            parent = (GoogleDriveDocument) parent.Parent;
+                        }
+                    }
                 }
 
                 if (changes.NewStartPageToken != null) {

@@ -44,7 +44,7 @@ namespace DocumentSync.Backend.Google {
         }
 
         public override DocumentEventArgs Classify(IDocument change) {
-            Console.WriteLine("{0} {1}", change.Id, change.FullName);
+            Console.WriteLine("Classify: {0} {1}", change.Id, change.FullName);
             Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
 
             // Note: Is event time required for classification?
@@ -69,10 +69,11 @@ namespace DocumentSync.Backend.Google {
         }
 
         private void Check() {
-            var events = new List<DocumentEventArgs>();
+            Console.WriteLine("{0} event check {1} {2}", this, EnableRaisingEvents, PauseRaisingEvents);
 
             foreach (var change in ChangeLog) {
-                events.Add(Classify(change));
+                Console.WriteLine("{0}", change.FullName);
+                Events.Add(Classify(change));
             }
 
             if (!EnableRaisingEvents) {
@@ -82,8 +83,10 @@ namespace DocumentSync.Backend.Google {
             if (PauseRaisingEvents)
                 return;
 
+            Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
+
             // Dispatch Events
-            foreach (var e in events) {
+            foreach (var e in Events) {
                 switch (e.ChangeType) {
                     case DocumentChangeType.Created:
                         if (Created != null) {
@@ -107,6 +110,7 @@ namespace DocumentSync.Backend.Google {
                         break;
                 }
             }
+            Events.Clear();
         }
     }
 }
