@@ -7,15 +7,19 @@ namespace DocumentSync {
         abstract public bool Equals(IDocument x, IDocument y);
 
         protected bool MetadataIsEqual(IDocument x, IDocument y) {
-            /*
-            Console.WriteLine ("DocumentComparer:\n  {0} {1} {2}\n  {3} {4} {5}",
+
+            Console.WriteLine("DocumentComparer:\n  {0} {1} {2}\n  {3} {4} {5}",
                 x.Name, x.Size, x.ModifiedTime,
             y.Name, y.Size, y.ModifiedTime);
-            */
+            Console.WriteLine(y.ModifiedTime - x.ModifiedTime);
+
+            Console.WriteLine((x.ModifiedTime - y.ModifiedTime).TotalSeconds);
+            Console.WriteLine((x.ModifiedTime - y.ModifiedTime).TotalSeconds == 0);
+            var seconds = (int)(x.ModifiedTime - y.ModifiedTime).TotalSeconds;
 
             return x.Name == y.Name &&
                     x.Size == y.Size &&
-                    x.ModifiedTime == y.ModifiedTime;
+                    seconds == 0;
         }
 
         protected bool ContentIsEqual(IDocument x, IDocument y) {
@@ -42,6 +46,7 @@ namespace DocumentSync {
     }
     public class MetadataDocumentComparer : DocumentComparer {
         override public bool Equals(IDocument x, IDocument y) {
+            Console.WriteLine("equals");
             return MetadataIsEqual(x, y);
         }
     }
@@ -62,13 +67,27 @@ namespace DocumentSync {
     public class DocumentSync {
         public EventHandler<ConvergenceEventArgs> Convergence;
         List<IDocumentStore> DocumentStores { get; set; }
+        List<DocumentWatcher> Watchers { get; set; }
         IDocumentStoreFactory mDocumentStoreFactory;
         public DocumentSync(params string[] backends) {
             DocumentStores = new List<IDocumentStore>();
+            Watchers = new List<DocumentWatcher>();
             mDocumentStoreFactory = new DocumentStoreFactory();
 
             foreach (var backend in backends) {
-                DocumentStores.Add(mDocumentStoreFactory.LoadDocumentStore(backend));
+                var store = mDocumentStoreFactory.LoadDocumentStore(backend);
+                DocumentStores.Add(store);
+                var watch = store.Watch();
+                Watchers.Add(watch);
+                Console.WriteLine("{0}", watch);
+
+                watch.PauseRaisingEvents = true;
+                watch.EnableRaisingEvents = true;
+
+                watch.Created += OnDocumentCreated;
+                watch.Changed += OnDocumentChanged;
+                watch.Deleted += OnDocumentDeleted;
+                watch.Renamed += OnDocumentRenamed;
             }
         }
 
@@ -90,14 +109,14 @@ namespace DocumentSync {
             foreach (var item in files) {
                 Console.WriteLine("{0} {1}", item.Key, item.Value.Count());
 
-                // One item in list
-
                 if (item.Value.Count() == 1) {
                     toSync.Add(item.Value.First());
                 }
                 else {
                     var items = item.Value.Distinct(new MetadataDocumentComparer());
                     if (items.Count() > 1) {
+                        Console.WriteLine("Distinct");
+                        items.Distinct(new MetadataDocumentComparer());
                         toSync.Add(items.OrderByDescending(i => i.ModifiedTime).First());
                     }
                 }
@@ -109,48 +128,62 @@ namespace DocumentSync {
                     if (item.Owner == store) {
                         continue;
                     }
-                    store.CreateFile(item.FullName, item.OpenRead());
+                    Console.WriteLine("Replicating {0}:{1} to {2}", item.FullName, item.Owner, store);
+                    var document = store.GetByPath(item.FullName);
+                    using (var fp = item.OpenRead()) {
+                        if (document == null) {
+                            document = store.CreateFile(item.FullName, fp);
+                        }
+                        else {
+                            document.Update(fp);
+                        }
+                    }
+                    store.CopyAttributes(item, document);
                 }
             }
+            foreach (var watch in Watchers) {
+                watch.PauseRaisingEvents = false;
+            }
+            Watchers[0].PollThread.Join();
         }
 
+        private void OnDocumentCreated(object source, DocumentEventArgs e) {
+            foreach (var store in DocumentStores) {
+                if (e.Document.Owner == store)
+                    continue;
 
-        private void ProcessQueue(Object source, System.Timers.ElapsedEventArgs e) {
-            /*
-            try {
-                GetDriveChanges();
-
-                var queue = SyncQueue;
-                SyncQueue = new Queue<EventArgs>();
-
-                Console.WriteLine("Executing sync queue. {0}", queue.Count);
-                foreach (var change in queue) {
-                    Console.WriteLine("Change: {0}", change.GetType());
-
-                    if (change is DriveChangedEventArgs)
-                        ExecuteDriveChangedEvent((DriveChangedEventArgs)change);
-                    else if (change is DriveCreatedEventArgs)
-                        ExecuteDriveCreatedEvent((DriveCreatedEventArgs)change);
-                    else if (change is DriveDeletedEventArgs)
-                        ExecuteDriveDeletedEvent((DriveDeletedEventArgs)change);
-                    else if (change is DriveRenamedEventArgs)
-                        ExecuteDriveRenamedEvent((DriveRenamedEventArgs)change);
-
-                    else if (change is FileChangedEventArgs)
-                        ExecuteFileChangedEvent((FileChangedEventArgs)change);
-                    else if (change is FileCreatedEventArgs)
-                        ExecuteFileCreatedEvent((FileCreatedEventArgs)change);
-                    else if (change is FileDeletedEventArgs)
-                        ExecuteFileDeletedEvent((FileDeletedEventArgs)change);
-                    else if (change is FileRenamedEventArgs)
-                        ExecuteFileRenamedEvent((FileRenamedEventArgs)change);
-                    else { } // throw new Exception("Unknown Event type");
-
-                }
-            } catch (Exception ex) {
-                Console.WriteLine(ex);
+                var dType = e.Document.IsDirectory ? DocumentType.Directory : DocumentType.File;
+                var document = store.Create(e.Document.FullName, dType);
+                Console.WriteLine("Document create event {0}:{1}", store, document.FullName);
+                store.CopyAttributes(e.Document, document);
             }
-            */
+        }
+        private void OnDocumentChanged(object source, DocumentEventArgs e) {
+            foreach (var store in DocumentStores) {
+                if (e.Document.Owner == store)
+                    continue;
+                Console.WriteLine("Document change event {0}:{1}", store, e.Document.FullName);
+                var document = store.GetByPath(e.Document.FullName);
+                if ((new FastDocumentComparer()).Equals(e.Document, document))
+                    continue;
+                store.Copy(e.Document, document);
+            }
+        }
+        private void OnDocumentRenamed(object source, DocumentEventArgs e) {
+            throw new NotImplementedException("Rename not supported");
+            foreach (var store in DocumentStores) {
+                if (e.Document.Owner == store)
+                    continue;
+                Console.WriteLine("Document rename event {0}:{1}", store, e.Document.FullName);
+            }
+        }
+        private void OnDocumentDeleted(object source, DocumentEventArgs e) {
+            throw new NotImplementedException("Delete not supported");
+            foreach (var store in DocumentStores) {
+                if (e.Document.Owner == store)
+                    continue;
+                Console.WriteLine("Document delete event {0}:{1}", store, e.Document.FullName);
+            }
         }
     }
 }
