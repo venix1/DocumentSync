@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Linq;
+using System;
 
 namespace DocumentSync.Backend.Google {
     public class GoogleDocumentCache : DbContext {
@@ -12,30 +13,35 @@ namespace DocumentSync.Backend.Google {
         }
         private void Initialize() {
             Documents = new Dictionary<string, GoogleDriveDocument>();
+            Database.EnsureCreated();
+            SaveChanges();
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {
             optionsBuilder.UseSqlite("Data Source=google_drive.db");
-        }
 
+        }
 
         public void Add(IDocument document) {
             GoogleDocumentIndex index;
+            lock (this) {
 
-            index = DocumentIndex.SingleOrDefault(i => i.Id == document.Id);
+                index = DocumentIndex.SingleOrDefault(i => i.Id == document.Id);
 
-            if (index == null) {
-                index = new GoogleDocumentIndex();
-                DocumentIndex.Add(index);
-                Documents.Add(document.Id, (GoogleDriveDocument)document);
+                if (index == null) {
+                    index = new GoogleDocumentIndex();
+
+                    DocumentIndex.Add(index);
+                    Documents.Add(document.Id, (GoogleDriveDocument)document);
+                }
+
+                index.Id = document.Id;
+                index.Parent = document.Parent?.Id;
+                index.Name = document.Name;
+                index.Version = document.Version;
+
+                SaveChanges();
             }
-
-            index.Id = document.Id;
-            index.Parent = document.Parent.Id;
-            index.Name = document.Name;
-            index.Version = document.Version;
-
-            SaveChanges();
         }
 
         public bool ContainsDocument(string id) {
