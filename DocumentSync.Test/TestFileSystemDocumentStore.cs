@@ -13,19 +13,19 @@ namespace DocumentSync.Test
 		// Moq.Mock<DriveService> mockDriveService;
 		string TmpFolder;
 		DirectoryInfo Root;
-		FileSystemDocumentStore DocumentStore;
+		IDocumentStore DocumentStore;
 
-		public TestFileSystemDocumentStore()
-		{
-			DocumentStore = new FileSystemDocumentStore("/");
+        public TestFileSystemDocumentStore() {
+            TmpFolder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            Root = new DirectoryInfo(TmpFolder);
+            Console.WriteLine("Creating {0}", Root.FullName);
+            Root.Create();
 
-			TmpFolder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-			Root = new DirectoryInfo(TmpFolder);
-			Console.WriteLine("Creating {0}", Root.FullName);
-			Root.Create();
-		}
+            var factory = new DocumentStoreFactory();
+            DocumentStore = factory.LoadDocumentStore("fs://" + TmpFolder);
+        }
 
-		public void Dispose()
+        public void Dispose()
 		{
 			Console.WriteLine("Removing {0}", Root.FullName);
 			Root.Delete(true);
@@ -52,6 +52,7 @@ namespace DocumentSync.Test
 			VerifyDocument(DocumentStore.Create(System.IO.Path.Combine(TmpFolder, "SubA/FileA"), DocumentType.File));
 		}
 
+
 		[Fact]
 		public void TestDelete()
 		{
@@ -76,10 +77,41 @@ namespace DocumentSync.Test
 		}
 
 		[Fact]
-		public void GetById()
+		public void TestGetById()
 		{
 			DocumentStore.GetById(TmpFolder);
 		}
+
+
+		[Fact]
+		public void TestGetByPath() {
+			Assert.Null(DocumentStore.GetByPath("/non-existent"));
+
+            // Expect null
+            // Specify  root
+            // Specify full path
+        }
+        [Fact]
+        public void TestCopyAttributes() {
+            throw NotImplementedException();
+        }
+
+
+        [Fact]
+        public void TestUpdate_Attributes() {
+            throw NotImplementedException();
+        }
+
+        [Fast]
+        public void TestUpdate_Data() {
+            throw NotImplementedException();
+        }
+
+		[Fast]
+		public void Test_InvalidOwner() {
+            throw new NotImplementedException();
+        }
+
 	}
 }
 

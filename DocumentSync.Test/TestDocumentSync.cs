@@ -22,6 +22,8 @@ namespace DocumentSync.Test
         public void Test_SyncMissing() => throw new NotImplementedException();
 
         public void Test_FastDocumentComparer() => throw new NotImplementedException();
-        public void TesT_FullDocumentComparer() => throw new NotImplementedException();
+        // Ensure that milliseconds are property discard in comparison operations
+        public void Test_Milliseconds() => throw new NotImplementedException();
+        public void Test_FullDocumentComparer() => throw new NotImplementedException();
     }
 }
