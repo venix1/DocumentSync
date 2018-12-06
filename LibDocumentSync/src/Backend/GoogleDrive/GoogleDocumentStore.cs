@@ -102,7 +102,7 @@ namespace DocumentSync.Backend.Google {
             // Authenticate
             using (var stream =
                    System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("LibDocumentSync.client_secret.json")) {
-                var credPath = Path.Combine(ApplicationPath, ".credentials/drive-dotnet-sync.json");
+                var credPath = Path.Combine(ApplicationPath, ".credentials/drive-dotnet-sync");
 
                 credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
                     GoogleClientSecrets.Load(stream).Secrets,
@@ -126,10 +126,14 @@ namespace DocumentSync.Backend.Google {
         }
 
         protected GoogleDriveDocument EncapsulateDocument(DriveFile file) {
-            // Update Cache
-            // Update Index
-            var document = new GoogleDriveDocument(this, file);
-            Cache.Add(document);
+            GoogleDriveDocument document;
+            if (!Cache.Documents.TryGetValue(file.Id, out document)) {
+                document.Document = file;
+            }
+            else {
+                document = new GoogleDriveDocument(this, file);
+                Cache.Add(document);
+            }
             return document;
         }
 
@@ -163,7 +167,7 @@ namespace DocumentSync.Backend.Google {
             createRequest.Fields = RequiredFields;
             file = createRequest.Execute();
 
-            return new GoogleDriveDocument(this, file);
+            return EncapsulateDocument(file);
         }
 
         public override void Update(IDocument src) {
@@ -376,12 +380,13 @@ namespace DocumentSync.Backend.Google {
                             var file = new DriveFile {
                                 Id = change.FileId
                             };
+                            // Need a Document instance for deleted file. That
+                            // makes this the one exception to EncapsulateDocument
                             document = new GoogleDriveDocument(this, file);
                         }
                     }
                     else {
-                        document = new GoogleDriveDocument(this, change.File);
-                        Cache.Add(document);
+                        document = EncapsulateDocument(change.File);
                     }
 
                     {
