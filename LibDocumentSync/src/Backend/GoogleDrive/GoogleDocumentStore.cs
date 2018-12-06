@@ -127,7 +127,7 @@ namespace DocumentSync.Backend.Google {
 
         protected GoogleDriveDocument EncapsulateDocument(DriveFile file) {
             GoogleDriveDocument document;
-            if (!Cache.Documents.TryGetValue(file.Id, out document)) {
+            if (Cache.Documents.TryGetValue(file.Id, out document)) {
                 document.Document = file;
             }
             else {
