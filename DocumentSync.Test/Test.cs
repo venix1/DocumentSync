@@ -67,6 +67,10 @@ namespace DocumentSync.Test
 		// FileSystemInfo fileSystemInfo)
 		//(UnifiedFile file)
 
+		public void TestCreateExisting() {
+			// Tests creation of existinf ile.  Must throw exception.
+		}
+
 		public void GetFileByPath_() { }
 		public void ScanDisk_() { }
 		public void ScanDrive_() { }
