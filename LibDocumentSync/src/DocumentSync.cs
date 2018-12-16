@@ -129,7 +129,7 @@ namespace DocumentSync {
                         continue;
                     }
                     Console.WriteLine("Replicating {0}:{1} to {2}", item.FullName, item.Owner, store);
-                    var document = store.GetByPath(item.FullName);
+                    var document = store.TryGetByPath(item.FullName);
                     using (var fp = item.OpenRead()) {
                         if (document == null) {
                             document = store.CreateFile(item.FullName, fp);
@@ -147,14 +147,41 @@ namespace DocumentSync {
             Watchers[0].PollThread.Join();
         }
 
+        private void OnDocumentEvent(object source, DocumentEventArgs e) {
+            // var watcher = (IDocumentWatcher)source;
+            //var src = Watchers.Owner.GetById(e.Document.Id);
+            var src = e.Document.Owner.GetById(e.Document.Id);
+            foreach(var store in DocumentStores) {
+                if (src.Owner == store)
+                    continue;
+                var dst = store.GetByPath(e.Document.FullName);
+                switch(e.ChangeType) {
+                    case DocumentChangeType.Created:
+                        break;
+                    case DocumentChangeType.Changed:
+                        break;
+                    case DocumentChangeType.Deleted:
+                        break;
+                    case DocumentChangeType.Renamed:
+                        break;
+                }
+            }
+        }
+
         private void OnDocumentCreated(object source, DocumentEventArgs e) {
+            var src = e.Document.Owner.GetById(e.Document.Id);
             foreach (var store in DocumentStores) {
-                if (e.Document.Owner == store)
+                if (src.Owner == store)
+                    continue;
+                Console.WriteLine("Document create event {0}:{1}", store, e.Document.FullName);
+
+                var document = store.TryGetByPath(e.Document.FullName);
+                var dType = e.Document.IsDirectory ? DocumentType.Directory : DocumentType.File;
+                // Create Events must be ignored on existing files. Otherwise dataloss is guaranteed.
+                if (document != null)
                     continue;
 
-                var dType = e.Document.IsDirectory ? DocumentType.Directory : DocumentType.File;
-                var document = store.Create(e.Document.FullName, dType);
-                Console.WriteLine("Document create event {0}:{1}", store, document.FullName);
+                document = store.Create(e.Document.FullName, dType);
                 store.CopyAttributes(e.Document, document);
             }
         }
@@ -164,9 +191,20 @@ namespace DocumentSync {
                     continue;
                 Console.WriteLine("Document change event {0}:{1}", store, e.Document.FullName);
                 var document = store.GetByPath(e.Document.FullName);
+                if (document == null)
+                    throw new DocumentException(String.Format("{0} unable to find in store {1}", e.Document.FullName, store));
                 if ((new FastDocumentComparer()).Equals(e.Document, document))
                     continue;
                 store.Copy(e.Document, document);
+            }
+        }
+        private void OnDocumentDeleted(object source, DocumentEventArgs e) {
+            foreach (var store in DocumentStores) {
+                if (e.Document.Owner == store)
+                    continue;
+                Console.WriteLine("Document delete event {0}:{1}", store, e.Document.FullName);
+                var document = store.GetByPath(e.Document.FullName);
+                store.Delete(document);
             }
         }
         private void OnDocumentRenamed(object source, DocumentEventArgs e) {
@@ -175,14 +213,6 @@ namespace DocumentSync {
                 if (e.Document.Owner == store)
                     continue;
                 Console.WriteLine("Document rename event {0}:{1}", store, e.Document.FullName);
-            }
-        }
-        private void OnDocumentDeleted(object source, DocumentEventArgs e) {
-            throw new NotImplementedException("Delete not supported");
-            foreach (var store in DocumentStores) {
-                if (e.Document.Owner == store)
-                    continue;
-                Console.WriteLine("Document delete event {0}:{1}", store, e.Document.FullName);
             }
         }
     }
