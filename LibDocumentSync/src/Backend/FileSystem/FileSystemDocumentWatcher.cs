@@ -35,7 +35,7 @@ namespace DocumentSync.Backend.FileSystem {
                 while (true) {
                     Check();
 
-                    var sleepTime = 5000 - (int)(DateTime.UtcNow - begin).TotalMilliseconds;
+                    var sleepTime = 15000 - (int)(DateTime.UtcNow - begin).TotalMilliseconds;
                     if (sleepTime > 0)
                         System.Threading.Thread.Sleep(sleepTime);
                     begin = DateTime.UtcNow;
@@ -68,6 +68,8 @@ namespace DocumentSync.Backend.FileSystem {
             Console.WriteLine("{0} {1} {2}", this, e.ChangeType, e.FullPath);
             var path = e.FullPath.Substring(Owner.RootPath.Length);
             var document = Owner.GetByPath(path);
+            if (document == null)
+                throw new DocumentException("Unexpected event");
             var evt = new DocumentEventArgs(DocumentChangeType.Deleted, document);
             Events.Add(evt);
         }
@@ -89,7 +91,8 @@ namespace DocumentSync.Backend.FileSystem {
             if (PauseRaisingEvents)
                 return;
 
-            Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
+            if (Events.Count > 0)
+                Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
 
             var events = Events;
             Events = new List<DocumentEventArgs>();
@@ -97,10 +100,16 @@ namespace DocumentSync.Backend.FileSystem {
             foreach (var e in events) {
                 switch (e.ChangeType) {
                     case DocumentChangeType.Created:
-                        Created?.Invoke(Owner, e);
+                        if (e.Document.Exists)
+                            Created?.Invoke(Owner, e);
+                        else
+                            Console.WriteLine("Document deleted ignoring Created event");
                         break;
                     case DocumentChangeType.Changed:
-                        Changed?.Invoke(Owner, e);
+                        if (e.Document.Exists)
+                            Changed?.Invoke(Owner, e);
+                        else
+                            Console.WriteLine("Document deleted ignoring Changed event");
                         break;
                     case DocumentChangeType.Deleted:
                         Deleted?.Invoke(Owner, e);
