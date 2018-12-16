@@ -21,7 +21,7 @@ namespace DocumentSync.Backend.FileSystem {
                 Directory.CreateDirectory(root);
             }
             RootPath = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
-            mRoot = (FileSystemDocument)GetByPath(RootPath);
+            mRoot = (FileSystemDocument)GetByPath("/");
         }
 
         public override Stream Open(IDocument document, System.IO.FileMode mode) {
@@ -29,16 +29,18 @@ namespace DocumentSync.Backend.FileSystem {
         }
 
         public override IDocument Create(string path, DocumentType type) {
-            path = Path.Combine(RootPath, path);
+            // path = Path.Combine(RootPath, path);
             var tail = System.IO.Path.GetFileName(path);
             var head = System.IO.Path.GetDirectoryName(path);
 
+            Console.WriteLine("fs: {0} {1}", head, tail);
             return Create(GetByPath(head), tail, type);
         }
 
         public override IDocument Create(IDocument parent, string name, DocumentType type) {
             FileSystemInfo fsi;
-            var path = MakeAbsolute(Path.Combine(parent.FullName, name));
+            Console.WriteLine("Parent: {0} {1}", parent.Name, name);
+            var path = MakeAbsolute(Path.Combine(Root.FullName, parent.FullName, name));
             Console.WriteLine("Creating {0}", path);
 
             switch (type) {
@@ -78,17 +80,24 @@ namespace DocumentSync.Backend.FileSystem {
             return GetByPath(id);
         }
 
-        public override IDocument GetByPath(string path) {
-            var absPath = MakeAbsolute(path);
+        private FileSystemInfo LookupDocument(string path) {
             FileSystemInfo fi;
-            if (System.IO.Directory.Exists(absPath))
-                fi = new DirectoryInfo(absPath);
-            else if (System.IO.File.Exists(absPath))
-                fi = new FileInfo(absPath);
+            if (System.IO.Directory.Exists(path))
+                return new DirectoryInfo(path);
+            else if (System.IO.File.Exists(path))
+                return new FileInfo(path);
             else
                 return null;
+        }
+        public override IDocument TryGetByPath(string path) {
+            var absPath = MakeAbsolute(path);
+            Console.WriteLine("fs TryGetByPath: {0} {1}", path, absPath);
 
-            return new FileSystemDocument(this, fi);
+            var fi = LookupDocument(absPath);
+            if (fi == null)
+                return null;
+            else
+                return new FileSystemDocument(this, fi);
         }
 
         public override DocumentWatcher Watch() {
@@ -131,6 +140,7 @@ namespace DocumentSync.Backend.FileSystem {
          * Translates Filesystem path to Document path
          */
         internal string MakeRelative(string path) {
+            Console.WriteLine("MR: {0} {1}", RootPath, path);
             return path.Substring(RootPath.Length);
         }
 
