@@ -22,12 +22,21 @@ namespace DocumentSync.Backend.Google {
             Owner = owner;
             Document = document;
 
-            FullName = owner.GetPath(this);
+            // FullName = owner.GetPath(this);
         }
 
         public string Id => Document.Id;
         public string Name => Document.Name;
-        public string FullName { get; private set; }
+        // public string FullName => Owner.GetPath(Id);
+        private string mFullName;
+        public string FullName {
+            get {
+                if (mFullName == null) {
+                    mFullName = ((GoogleDriveDocumentStore)Owner).GetPath(this);
+                }
+                return mFullName;
+            }
+        }
         public long Size => Document.Size.GetValueOrDefault(0);
         public DateTime CreatedTime => Document.CreatedTime.GetValueOrDefault(DateTime.Now);
         public DateTime ModifiedTime {
