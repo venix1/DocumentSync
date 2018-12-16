@@ -20,7 +20,7 @@ namespace DocumentSync.Backend.FileSystem {
 
         // IDocument Interface
 
-        public string Id { get => Document.FullName; }
+        public string Id { get => FullName; }
         public string Name { get => Document.Name; }
         public string FullName { get => ((FileSystemDocumentStore)Owner).MakeRelative(Document.FullName); }
         public long Size { get => IsFile ? FileInfo.Length : 0; }
@@ -32,8 +32,8 @@ namespace DocumentSync.Backend.FileSystem {
         }
         public IDocument Parent => throw new NotImplementedException();
         public long Version => throw new NotImplementedException();
-        public bool Deleted => throw new NotImplementedException();
-        public bool Exists => throw new NotImplementedException();
+        public bool Deleted => !Exists;
+        public bool Exists => FileInfo.Exists;
         public bool Trashed => throw new NotImplementedException();
 
         public StreamReader OpenText() {
