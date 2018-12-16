@@ -5,6 +5,7 @@ using System;
 
 namespace DocumentSync.Backend.Google {
     public class GoogleDocumentCache : DbContext {
+        public Dictionary<string, string> IdPath { get; protected set; }
         public Dictionary<string, GoogleDriveDocument> Documents { get; protected set; }
         public DbSet<GoogleDocumentIndex> DocumentIndex { get; set; }
 
@@ -13,6 +14,7 @@ namespace DocumentSync.Backend.Google {
         }
         private void Initialize() {
             Documents = new Dictionary<string, GoogleDriveDocument>();
+            IdPath = new Dictionary<string, string>();
             Database.EnsureCreated();
             SaveChanges();
         }
@@ -22,7 +24,23 @@ namespace DocumentSync.Backend.Google {
 
         }
 
+        public bool TryGetValue(string key, out GoogleDriveDocument value) {
+            return Documents.TryGetValue(key, out value);
+        }
+
+        public bool Remove(string key) {
+            return Documents.Remove(key);
+        }
+
         public void Add(IDocument document) {
+            try {
+                Documents.Add(document.Id, (GoogleDriveDocument)document);
+            }
+            catch (System.ArgumentException e) {
+                Console.WriteLine("{0} {1}", document.Id, document.FullName);
+                throw e;
+            }
+            return;
             GoogleDocumentIndex index;
             lock (this) {
 

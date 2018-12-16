@@ -87,6 +87,8 @@ namespace DocumentSync.Backend.Google {
             if (root == null)
                 throw new Exception("Unable to get root Folder");
 
+            // Prime Root.FullName & replace RootPath with Drive names
+            RootPath = root.FullName;
             mRoot = (GoogleDriveDocument)root;
         }
 
@@ -127,10 +129,11 @@ namespace DocumentSync.Backend.Google {
 
         protected GoogleDriveDocument EncapsulateDocument(DriveFile file) {
             GoogleDriveDocument document;
-            if (Cache.Documents.TryGetValue(file.Id, out document)) {
+            if (Cache.TryGetValue(file.Id, out document)) {
                 document.Document = file;
             }
             else {
+                // Cache.AddDocument(this, file);
                 document = new GoogleDriveDocument(this, file);
                 Cache.Add(document);
             }
@@ -146,10 +149,13 @@ namespace DocumentSync.Backend.Google {
         }
 
         public override IDocument Create(IDocument parent, string name, DocumentType type) {
-            // Verify existence of Parent.
+            // TODO: Verify existence of Parent.
+            // TODO: Throw error on duplicate files
+            // TODO: Expand Creation options.
+            // TODO: Atomic create. Creates, uploads content, and sets metadata in 1 operation.
+
             var file = new DriveFile();
             file.Name = name;
-            // TODO: Expand Creation options.
             file.ModifiedTime = DateTime.Now;
 
             if (parent != null) {
@@ -241,7 +247,7 @@ namespace DocumentSync.Backend.Google {
             listRequest.PageSize = 10;
             listRequest.Fields = String.Format("nextPageToken, files({0})", RequiredFields);
             listRequest.Q = q;
-            Console.WriteLine(q);
+            // Console.WriteLine(q);
 
             do {
                 FileList files = listRequest.Execute();
@@ -267,7 +273,7 @@ namespace DocumentSync.Backend.Google {
         public override IDocument GetById(string id) {
             // Check Cache First
             GoogleDriveDocument document;
-            Cache.Documents.TryGetValue(id, out document);
+            Cache.TryGetValue(id, out document);
             if (document == null) {
                 var resource = DriveService.Files.Get(id);
                 resource.Fields = RequiredFields;
@@ -284,7 +290,7 @@ namespace DocumentSync.Backend.Google {
             return document;
         }
 
-        public override IDocument GetByPath(string path) {
+        public override IDocument TryGetByPath(string path) {
             path = MakeAbsolutePath(path);
             Console.WriteLine(path);
             IDocument dir = GetById("root");
@@ -313,7 +319,7 @@ namespace DocumentSync.Backend.Google {
                 }
                 if (results.Length != 1) {
                     return null;
-                    throw new FileNotFoundException("File not found");
+                    // throw new FileNotFoundException("File not found: " + path);
                 }
 
                 dir = results[0];
@@ -339,9 +345,8 @@ namespace DocumentSync.Backend.Google {
             var path = System.IO.Path.Combine(paths.ToArray());
             if (Root == null || Root.FullName.Length > path.Length)
                 return path;
-
-            // Console.WriteLine("GetPath: {0} {1}", Root.FullName, path);
-            return path.Substring(Root.FullName.Length);
+            else
+                return path.Substring(Root.FullName.Length);
         }
 
         public GoogleDriveChangesEnumerable GetChangeLog(string startPageToken = null) {
@@ -349,7 +354,7 @@ namespace DocumentSync.Backend.Google {
 
             if (startPageToken == null) {
                 var response = DriveService.Changes.GetStartPageToken().Execute();
-                Console.WriteLine("Start token: " + response.StartPageTokenValue);
+                // Console.WriteLine("Start token: " + response.StartPageTokenValue);
                 savedStartPageToken = response.StartPageTokenValue;
             }
 
@@ -361,7 +366,7 @@ namespace DocumentSync.Backend.Google {
             var list = new List<GoogleDriveDocument>();
             string newStartPageToken = null;
             while (pageToken != null) {
-                Console.WriteLine("PageToken: {0}", pageToken);
+                //Console.WriteLine("PageToken: {0}", pageToken);
                 var request = DriveService.Changes.List(pageToken);
 
                 request.IncludeRemoved = true;
@@ -371,11 +376,11 @@ namespace DocumentSync.Backend.Google {
                 var changes = request.Execute();
                 foreach (var change in changes.Changes) {
                     // TODO: Special Handling of Delete event
-                    Console.WriteLine("Change: {0} {1} {2}", change.FileId, change.Removed, change.TimeRaw);
+
                     GoogleDriveDocument document;
                     if (change.Removed.Value) {
-                        Cache.Documents.TryGetValue(change.FileId, out document);
-                        Cache.Documents.Remove(change.FileId);
+                        Cache.TryGetValue(change.FileId, out document);
+                        Cache.Remove(change.FileId);
                         if (document == null) {
                             var file = new DriveFile {
                                 Id = change.FileId
@@ -388,19 +393,22 @@ namespace DocumentSync.Backend.Google {
                     else {
                         document = EncapsulateDocument(change.File);
                     }
+                    Console.WriteLine("Change: {0} {1} {2} {3}", document.Id, 
+                        document.FullName, document.ModifiedTime, change.Removed);
 
                     {
                         var parent = document;
-                        while( parent != null) {
-                            if (parent.Id == Root.Id)  {
+                        while (parent != null) {
+                            if (parent.Id == Root.Id) {
                                 list.Add(document);
                                 break;
                             }
-                            parent = (GoogleDriveDocument) parent.Parent;
+                            parent = (GoogleDriveDocument)parent.Parent;
                         }
                     }
                 }
 
+                /*
                 if (changes.NewStartPageToken != null) {
                     Console.WriteLine("NewStartPageToken: {0}", changes.NewStartPageToken);
                 }
@@ -408,11 +416,12 @@ namespace DocumentSync.Backend.Google {
                 if (changes.NextPageToken != null) {
                     Console.WriteLine("NextPageToken: {0}", changes.NextPageToken);
                 }
+                */
                 newStartPageToken = changes.NewStartPageToken;
                 pageToken = changes.NextPageToken;
             }
             pageToken = newStartPageToken;
-            Console.WriteLine("StartPageToken: {0}", pageToken);
+            // Console.WriteLine("StartPageToken: {0}", pageToken);
 
             return list;
         }
