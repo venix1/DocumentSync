@@ -86,6 +86,7 @@ namespace DocumentSync {
 
         IDocument GetById(string id);
         IDocument GetByPath(string path);
+        IDocument TryGetByPath(string path);
 
         IEnumerable<IDocument> EnumerateFiles(string path = "/", string filter = "*", SearchOption options = SearchOption.AllDirectories);
         IEnumerable<IDocument> EnumerateFiles(IDocument path, string filter = "*", SearchOption options = SearchOption.AllDirectories);
@@ -104,9 +105,15 @@ namespace DocumentSync {
         public abstract void Update(IDocument dst);
         public abstract void Delete(IDocument arg0);
         public abstract IDocument GetById(string id);
-        public abstract IDocument GetByPath(string path);
+        public IDocument GetByPath(string path) {
+            var document = TryGetByPath(path);
+            if (document == null)
+                throw new DocumentException(path + " not found");
+            return document;
+        }
+        public abstract IDocument TryGetByPath(string path);
 
-        public bool Exists(string path) => GetByPath(path) != null;
+        public bool Exists(string path) => TryGetByPath(path) != null;
         public abstract void MoveTo(IDocument src, IDocument dst);
         public abstract void MoveTo(IDocument src, string name);
         public abstract void Update(IDocument dst, Stream stream);
@@ -188,8 +195,12 @@ namespace DocumentSync {
     public class DocumentEventArgs : EventArgs {
         public DocumentChangeType ChangeType { get; }
         public IDocument Document { get; }
-        // public IDocument Original { get; }
-
+        /*
+        public IDocument Original { get; }
+        public IDocument EventDocument { get; }
+        public string DocumentId {get; }
+        public IDocumentStore Owner { get; }
+        */
         public DocumentEventArgs(DocumentChangeType type, IDocument document) {
             ChangeType = type;
             Document = document;
