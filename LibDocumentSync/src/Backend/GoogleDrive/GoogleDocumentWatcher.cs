@@ -44,7 +44,7 @@ namespace DocumentSync.Backend.Google {
         }
 
         public override DocumentEventArgs Classify(IDocument change) {
-            Console.WriteLine("Classify: {0} {1}", change.Id, change.FullName);
+            Console.WriteLine("Classify: {0} {1} {2}", change.Id, change.FullName, change.Size);
             Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
 
             // Note: Is event time required for classification?
@@ -73,7 +73,8 @@ namespace DocumentSync.Backend.Google {
 
             foreach (var change in ChangeLog) {
                 Console.WriteLine("{0}", change.FullName);
-                Events.Add(Classify(change));
+                var e = Classify(change);
+                Events.Add(e);
             }
 
             if (!EnableRaisingEvents) {
@@ -83,10 +84,12 @@ namespace DocumentSync.Backend.Google {
             if (PauseRaisingEvents)
                 return;
 
-            Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
+            if (Events.Count > 0)
+                Console.WriteLine("Dispatching {0} {1}", this, Events.Count);
 
             // Dispatch Events
             foreach (var e in Events) {
+                Console.WriteLine("event: {0}", e.Document.GetHashCode());
                 switch (e.ChangeType) {
                     case DocumentChangeType.Created:
                         if (Created != null) {
