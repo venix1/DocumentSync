@@ -178,7 +178,7 @@ namespace DocumentSync.Backend.Google {
 
         public override void Update(IDocument src) {
             var fileMetadata = new DriveFile() {
-                ModifiedTime = src.ModifiedTime
+                ModifiedTime = src.LastModifiedTime
             };
 
             Console.WriteLine("Meta update {0} - ", src.FullName, src.Id);
