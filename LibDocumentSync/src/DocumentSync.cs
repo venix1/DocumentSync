@@ -9,23 +9,23 @@ namespace DocumentSync {
         protected bool MetadataIsEqual(IDocument x, IDocument y) {
 
             Console.WriteLine("DocumentComparer:\n  {0} {1} {2}\n  {3} {4} {5}",
-                x.Name, x.Size, x.ModifiedTime,
-            y.Name, y.Size, y.ModifiedTime);
-            Console.WriteLine(y.ModifiedTime - x.ModifiedTime);
+                x.Name, x.Length, x.LastModifiedTime,
+            y.Name, y.Length, y.LastModifiedTime);
+            Console.WriteLine(y.LastModifiedTime - x.LastModifiedTime);
 
-            Console.WriteLine((x.ModifiedTime - y.ModifiedTime).TotalSeconds);
-            Console.WriteLine((x.ModifiedTime - y.ModifiedTime).TotalSeconds == 0);
-            var seconds = (int)(x.ModifiedTime - y.ModifiedTime).TotalSeconds;
+            Console.WriteLine((x.LastModifiedTime - y.LastModifiedTime).TotalSeconds);
+            Console.WriteLine((x.LastModifiedTime - y.LastModifiedTime).TotalSeconds == 0);
+            var seconds = (int)(x.LastModifiedTime - y.LastModifiedTime).TotalSeconds;
 
             return x.Name == y.Name &&
-                    x.Size == y.Size &&
+                    x.Length == y.Length &&
                     seconds == 0;
         }
 
         protected bool ContentIsEqual(IDocument x, IDocument y) {
             return x.Name == y.Name &&
-                    x.Size == y.Size &&
-                    x.Md5Checksum == y.Md5Checksum;
+                    x.Length == y.Length &&
+                    x.Md5sum == y.Md5sum;
         }
 
         /* HashCode is always consistent */
@@ -117,7 +117,7 @@ namespace DocumentSync {
                     if (items.Count() > 1) {
                         Console.WriteLine("Distinct");
                         items.Distinct(new MetadataDocumentComparer());
-                        toSync.Add(items.OrderByDescending(i => i.ModifiedTime).First());
+                        toSync.Add(items.OrderByDescending(i => i.LastModifiedTime).First());
                     }
                 }
             }
