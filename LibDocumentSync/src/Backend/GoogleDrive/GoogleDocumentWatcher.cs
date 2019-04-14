@@ -45,7 +45,7 @@ namespace DocumentSync.Backend.Google {
 
         public override DocumentEventArgs Classify(IDocument change) {
             Console.WriteLine("Classify: {0} {1} {2}", change.Id, change.FullName, change.Size);
-            Console.WriteLine("\t{0}\n\t{1}", change.CreatedTime, change.ModifiedTime);
+            Console.WriteLine("\t{0}\n\t{1}", change.CreationTime, change.LastModifiedTime);
 
             // Note: Is event time required for classification?
 
@@ -55,7 +55,7 @@ namespace DocumentSync.Backend.Google {
                 return new DocumentEventArgs(DocumentChangeType.Deleted, change);
             }
             else {
-                if (change.CreatedTime >= change.ModifiedTime)
+                if (change.CreationTime >= change.LastModifiedTime)
                     return new DocumentEventArgs(DocumentChangeType.Created, change);
                 else
                     return new DocumentEventArgs(DocumentChangeType.Changed, change);
