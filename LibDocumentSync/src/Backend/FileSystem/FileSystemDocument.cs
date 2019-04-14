@@ -5,93 +5,62 @@ using System.Security.Cryptography;
 
 namespace DocumentSync.Backend.FileSystem {
 
-    public class FileSystemDocument : IDocument {
-        public IDocumentStore Owner { get; private set; }
-        // FileSystemDocumentStore Owner { get; set; }
-        FileSystemInfo Document { get; set; }
-
+    public class FileSystemDocument : Document {
+        // Unique
+        internal FileSystemInfo Document { get; set; }
         internal FileInfo FileInfo { get { return Document as FileInfo; } set { Document = value; } }
         internal DirectoryInfo DirectoryInfo { get { return Document as DirectoryInfo; } set { Document = value; } }
-
         internal FileSystemDocument(FileSystemDocumentStore owner, FileSystemInfo fsi) {
             Owner = owner;
             Document = fsi;
         }
 
-        // IDocument Interface
-
-        public string Id { get => FullName; }
-        public string Name { get => Document.Name; }
-        public string FullName { get => ((FileSystemDocumentStore)Owner).MakeRelative(Document.FullName); }
-        public long Size { get => IsFile ? FileInfo.Length : 0; }
-
-        public DateTime CreatedTime => Document.CreationTime;
-        public DateTime ModifiedTime {
-            get => Document.LastWriteTime;
-            set => UpdateLastWriteTime(value);
-        }
-        public IDocument Parent => throw new NotImplementedException();
-        public long Version => throw new NotImplementedException();
-        public bool Deleted => !Exists;
-        public bool Exists => FileInfo.Exists;
-        public bool Trashed => throw new NotImplementedException();
-
-        public StreamReader OpenText() {
-            return FileInfo.OpenText();
-        }
-
-        public Stream OpenRead() {
-            return FileInfo.OpenRead();
-        }
-
-        public bool IsDirectory {
-            get {
-                return DirectoryInfo != null;
-            }
-        }
-
-        public bool IsFile {
-            get {
-                return FileInfo != null;
-            }
-        }
-
-        public System.Collections.IEnumerable Children {
-            get { throw new Exception("stub"); }
-        }
-
-        public string Md5Checksum {
-            get { return CalculateMd5Sum(); }
-        }
-
-        private string _Md5Checksum;
+        private string mMd5Sum;
         private string CalculateMd5Sum() {
             using (var md5hash = MD5.Create()) {
                 if (IsFile) {
-                    using (var stream = File.OpenRead(FileInfo.FullName)) {
+                    using (var stream = OpenRead()) {
                         var hash = md5hash.ComputeHash(stream);
-                        _Md5Checksum = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                        mMd5Sum = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
                     }
                 }
                 else {
-                    _Md5Checksum = "d41d8cd98f00b204e9800998ecf8427e";
+                    mMd5Sum = "d41d8cd98f00b204e9800998ecf8427e";
                 }
             }
-            return _Md5Checksum;
+            return mMd5Sum;
         }
 
-        public void Update(System.IO.Stream stream) {
-            using (var fp = FileInfo.Create()) {
-                stream.CopyTo(fp);
+        // Interface 
+        public override DateTime CreationTimeUtc => Document.CreationTimeUtc;
+        public override IDocument Directory => throw new NotImplementedException();
+
+        public override DocumentType DocumentType => throw new NotImplementedException();
+        public override bool Exists => FileInfo.Exists;
+
+        public override string FullName => ((FileSystemDocumentStore)Owner).MakeRelative(Document.FullName);
+
+        public override string Id => FullName;
+
+        public override bool IsReadOnly { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+
+        public override DateTime LastModifiedTimeUtc {
+            get {
+                return Document.LastWriteTimeUtc;
+            }
+            set {
+                Document.LastWriteTimeUtc = value;
             }
         }
 
-        public void UpdateLastWriteTime(DateTime value) {
-            FileInfo.LastWriteTime = value;
-        }
+        public override long Length => IsFile ? FileInfo.Length : 0;
 
-        public void Delete() {
-            throw new NotImplementedException("File Modifications not implemented");
-        }
+        public override string Md5sum => CalculateMd5Sum();
+
+        public override string Name => Document.Name;
+
+        public override bool Trashed => throw new NotImplementedException();
+
+        public override long Version => throw new NotImplementedException();
     }
 }
