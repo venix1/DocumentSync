@@ -151,11 +151,11 @@ namespace DocumentSync {
             // var watcher = (IDocumentWatcher)source;
             //var src = Watchers.Owner.GetById(e.Document.Id);
             var src = e.Document.Owner.GetById(e.Document.Id);
-            foreach(var store in DocumentStores) {
+            foreach (var store in DocumentStores) {
                 if (src.Owner == store)
                     continue;
                 var dst = store.GetByPath(e.Document.FullName);
-                switch(e.ChangeType) {
+                switch (e.ChangeType) {
                     case DocumentChangeType.Created:
                         break;
                     case DocumentChangeType.Changed:

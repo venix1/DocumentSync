@@ -36,7 +36,7 @@ namespace DocumentSync.Backend.Google {
                 var pageToken = StartPageToken;
                 foreach (var change in Owner.Changes(ref pageToken)) {
 
-                        Changes.Enqueue(change);
+                    Changes.Enqueue(change);
                 }
                 StartPageToken = pageToken;
             }
@@ -393,7 +393,7 @@ namespace DocumentSync.Backend.Google {
                     else {
                         document = EncapsulateDocument(change.File);
                     }
-                    Console.WriteLine("Change: {0} {1} {2} {3}", document.Id, 
+                    Console.WriteLine("Change: {0} {1} {2} {3}", document.Id,
                         document.FullName, document.ModifiedTime, change.Removed);
 
                     {

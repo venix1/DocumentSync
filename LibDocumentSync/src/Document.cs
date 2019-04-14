@@ -7,7 +7,7 @@ using System.Threading;
 
 namespace DocumentSync {
     public abstract class Document : IDocument {
-        public DateTime CreationTime =>  CreationTimeUtc.ToLocalTime();
+        public DateTime CreationTime => CreationTimeUtc.ToLocalTime();
         public abstract DateTime CreationTimeUtc { get; }
         public abstract IDocument Directory { get; }
         public string DirectoryName => Path.GetDirectoryName(FullName);
@@ -49,7 +49,7 @@ namespace DocumentSync {
         public List<IDocument> GetDocuments(string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly) {
             throw new NotImplementedException();
         }
-        public Stream Open(FileMode mode = FileMode.Open, FileAccess access=FileAccess.Read, FileShare share=FileShare.Read) {
+        public Stream Open(FileMode mode = FileMode.Open, FileAccess access = FileAccess.Read, FileShare share = FileShare.Read) {
             return Owner.Open(this, mode, access, share);
         }
         public Stream OpenRead() => Open(FileMode.Open);
